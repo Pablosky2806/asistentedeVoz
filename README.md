@@ -2,32 +2,50 @@
 
 Proyecto en Python para mantener conversaciones por voz.
 
-## Arquitectura elegida
+## Arquitectura
 
-La primera versión usará **ElevenAgents** mediante el SDK oficial de Python. ElevenLabs proporciona el agente conversacional y gestiona la entrada de voz, las transcripciones y el audio de respuesta. El SDK conecta el micrófono y los altavoces del equipo con una sesión del agente.
+La primera versión usa **ElevenAgents** mediante el SDK oficial de Python. ElevenLabs proporciona el agente conversacional y gestiona la entrada de voz, las transcripciones y el audio de respuesta. El SDK conecta el micrófono y los altavoces del equipo con una sesión del agente.
 
-Esto requiere crear/configurar un agente en ElevenLabs y obtener su `AGENT_ID`. Si el agente es privado, también se necesitará `ELEVENLABS_API_KEY`. Las credenciales se guardarán localmente en un archivo `.env`, que Git ignora.
+Debes crear y configurar un agente en ElevenLabs y obtener su `AGENT_ID`. Si el agente es privado, también necesitarás `ELEVENLABS_API_KEY`. Las credenciales se guardan localmente en `.env`, archivo que Git ignora.
 
-La sesión empieza cuando se ejecuta el programa y se cierra con `Ctrl+C`. No se incluye todavía una palabra de activación permanente (por ejemplo, «Oye asistente»); esa función necesitaría una fase aparte.
+El programa inicia una conversación cuando lo ejecutas y la mantiene hasta que termina el agente o pulsas `Ctrl+C`. No incluye una palabra de activación permanente (por ejemplo, «Oye asistente»); eso se puede añadir en una fase posterior.
 
-## Configuración local
+## Preparación en Windows
 
-1. Crear y activar un entorno virtual de Python.
-2. Instalar las dependencias de `requirements.txt`.
-3. Copiar `.env.example` a `.env` y completar los valores desde ElevenLabs.
+1. Instala Python 3.10 o posterior.
+2. Crea y activa un entorno virtual:
 
-No subas el archivo `.env` ni compartas la API key.
+   ```powershell
+   py -m venv .venv
+   .venv\Scripts\Activate.ps1
+   ```
 
-## Plan de trabajo
+3. Instala las dependencias:
 
-1. Preparar el repositorio y acordar la arquitectura. **En curso**
-2. Configurar dependencias y secretos locales sin subir la API key.
-3. Crear una primera conversación funcional.
-4. Añadir activación por voz y controles básicos de la sesión.
-5. Documentar la configuración, probar y publicar en GitHub.
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
 
-Cada avance se hará en una rama y quedará registrado en commits pequeños y explicados.
+4. Copia la plantilla de variables y complétala con los valores de ElevenLabs:
 
-## Estado
+   ```powershell
+   Copy-Item .env.example .env
+   ```
 
-La arquitectura y la configuración base están definidas; aún no hay integración de código.
+   `AGENT_ID` es obligatorio. `ELEVENLABS_API_KEY` solo se requiere si el agente tiene autenticación habilitada.
+
+5. Inicia el asistente:
+
+   ```powershell
+   python asistente.py
+   ```
+
+Asegúrate de que Windows tiene un micrófono y unos altavoces configurados. No subas `.env` ni compartas la API key.
+
+## Seguimiento del proyecto
+
+- `main`: rama estable.
+- `feature/elevenagents-architecture`: arquitectura y configuración inicial.
+- `feature/voice-session`: primera sesión de conversación.
+
+Los avances se registran en commits pequeños, explicados por fase.
