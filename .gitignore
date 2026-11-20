@@ -1,0 +1,25 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables y secretos
+.env
+.env.*
+!.env.example
+
+# Audio generado localmente
+*.mp3
+*.wav
+*.ogg
+
+# Herramientas y sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
