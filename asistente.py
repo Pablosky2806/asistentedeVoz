@@ -11,19 +11,19 @@ from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInt
 def main() -> None:
     load_dotenv()
 
-    agent_id = os.getenv("AGENT_ID")
-    api_key = os.getenv("ELEVENLABS_API_KEY")
+    agent_id = (os.getenv("AGENT_ID") or "").strip()
+    api_key = (os.getenv("ELEVENLABS_API_KEY") or "").strip() or None
 
-    if not agent_id:
+    if not agent_id or agent_id == "your-agent-id":
         raise SystemExit(
-            "Falta AGENT_ID. Configúralo en el archivo .env; consulta .env.example."
+            "Falta AGENT_ID. Añade el ID de tu agente al archivo .env."
         )
 
     client = ElevenLabs(api_key=api_key)
     conversation = Conversation(
         client,
         agent_id,
-        requires_auth=bool(api_key),
+        requires_auth=api_key is not None,
         audio_interface=DefaultAudioInterface(),
         callback_agent_response=lambda response: print(f"Asistente: {response}"),
         callback_agent_response_correction=lambda original, corrected: print(
