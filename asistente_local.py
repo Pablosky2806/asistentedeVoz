@@ -2,10 +2,9 @@
 
 import io
 import json
+import difflib
 import os
 import re
-import shutil
-import subprocess
 import unicodedata
 import wave
 from pathlib import Path
@@ -39,17 +38,8 @@ END_PHRASES = (
     "hemos terminado",
     "terminamos",
 )
-OPEN_ACTIONS = ("abre", "abrir", "inicia", "iniciar", "lanza", "ejecuta")
-APP_ALIASES = {
-    "teams": "Teams",
-    "microsoft teams": "Teams",
-    "cursor": "Cursor",
-    "bloc de notas": "Bloc de notas",
-    "notepad": "Bloc de notas",
-    "calculadora": "Calculadora",
-    "navegador": "Navegador",
-    "internet": "Navegador",
-}
+OPEN_ACTIONS = ("abre", "abres", "abrir", "inicia", "iniciar", "lanza", "ejecuta")
+LAUNCH_TARGETS: list[tuple[str, Path]] | None = None
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
 Responde de forma natural, cercana y breve, normalmente en una o tres frases.
@@ -77,45 +67,103 @@ def is_farewell(text: str) -> bool:
     return any(f" {phrase} " in normalized for phrase in END_PHRASES)
 
 
-def requested_application(text: str) -> str | None:
-    """Devuelve una aplicación permitida si la frase pide abrirla."""
+def requested_target(text: str) -> str | None:
+    """Extrae el nombre de una aplicación o carpeta de una orden de apertura."""
     normalized = normalize_text(text)
-    if not any(re.search(rf"\b{action}\b", normalized) for action in OPEN_ACTIONS):
+    action_pattern = r"\b(?:" + "|".join(OPEN_ACTIONS) + r")\b"
+    match = re.search(action_pattern + r"\s+(.+)$", normalized)
+    if not match:
         return None
-    for alias in sorted(APP_ALIASES, key=len, reverse=True):
-        if re.search(rf"\b{re.escape(alias)}\b", normalized):
-            return APP_ALIASES[alias]
-    return ""
+    target = match.group(1)
+    target = re.sub(
+        r"^(?:(?:por favor|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|de|el|la|los|las|un|una) )+",
+        "",
+        target,
+    )
+    target = re.sub(r"\s+(?:por favor|porfa)$", "", target).strip()
+    return target
 
 
-def open_application(application: str) -> bool:
-    """Abre una aplicación de una lista cerrada, sin ejecutar órdenes de voz."""
+def get_launch_targets() -> list[tuple[str, Path]]:
+    """Indexa accesos directos y carpetas habituales del usuario una vez."""
+    global LAUNCH_TARGETS
+    if LAUNCH_TARGETS is not None:
+        return LAUNCH_TARGETS
+
+    appdata = Path(os.environ.get("APPDATA", ""))
+    programdata = Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData"))
+    home = Path.home()
+    roots = {
+        appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+        programdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+        home / "Desktop",
+        home / "Documents",
+        home / "Downloads",
+        Path(os.environ["OneDrive"]) if os.environ.get("OneDrive") else None,
+        Path(os.environ["OneDriveCommercial"]) if os.environ.get("OneDriveCommercial") else None,
+    }
+    targets: list[tuple[str, Path]] = []
+
+    for root in (path for path in roots if path and path.is_dir()):
+        is_start_menu = "Start Menu" in str(root)
+        try:
+            if is_start_menu:
+                for shortcut in root.rglob("*"):
+                    if shortcut.is_file() and shortcut.suffix.lower() in {".lnk", ".url"}:
+                        targets.append((normalize_text(shortcut.stem), shortcut))
+                continue
+
+            depth_limit = 2 if root.name.lower() != "desktop" else 0
+            for entry in root.iterdir():
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_file() and entry.suffix.lower() in {".lnk", ".url"}:
+                    targets.append((normalize_text(entry.stem), entry))
+                elif entry.is_dir():
+                    targets.append((normalize_text(entry.name), entry))
+                    if depth_limit:
+                        for child in entry.iterdir():
+                            if child.is_dir() and not child.name.startswith("."):
+                                targets.append((normalize_text(child.name), child))
+        except OSError:
+            continue
+
+    LAUNCH_TARGETS = targets
+    return targets
+
+
+def open_requested_target(query: str) -> tuple[str, str]:
+    """Abre el mejor acceso directo o carpeta que coincide con la petición."""
+    if not query:
+        return "empty", "Dime el nombre de la aplicación, juego o carpeta."
+
+    normalized_query = normalize_text(query)
+    candidates = get_launch_targets()
+    ranked = sorted(
+        (
+            (difflib.SequenceMatcher(None, normalized_query, name).ratio(), name, path)
+            for name, path in candidates
+            if name
+        ),
+        reverse=True,
+    )
+    if not ranked or ranked[0][0] < 0.68:
+        return "missing", f"No encuentro un acceso directo o carpeta llamado {query}."
+
+    best_score, best_name, best_path = ranked[0]
+    if (
+        len(ranked) > 1
+        and best_name != ranked[1][1]
+        and best_score - ranked[1][0] < 0.08
+    ):
+        options = " o ".join(item[1] for item in ranked[:2])
+        return "ambiguous", f"He encontrado varias coincidencias: {options}. ¿Cuál quieres?"
+
     try:
-        if application == "Teams":
-            os.startfile("msteams:")
-        elif application == "Cursor":
-            candidates = [
-                shutil.which("cursor"),
-                str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Cursor" / "Cursor.exe"),
-                str(Path(os.environ.get("PROGRAMFILES", "C:\\Program Files")) / "Cursor" / "Cursor.exe"),
-            ]
-            executable = next(
-                (path for path in candidates if path and Path(path).is_file()), None
-            )
-            if not executable:
-                return False
-            subprocess.Popen([executable])
-        elif application == "Bloc de notas":
-            subprocess.Popen(["notepad.exe"])
-        elif application == "Calculadora":
-            subprocess.Popen(["calc.exe"])
-        elif application == "Navegador":
-            os.startfile("https://www.google.com")
-        else:
-            return False
+        os.startfile(str(best_path))
     except OSError:
-        return False
-    return True
+        return "error", f"He encontrado {best_name}, pero Windows no pudo abrirlo."
+    return "opened", f"Abriendo {best_name}."
 
 
 def capture_text(model: Model, grammar: str | None = None) -> str:
@@ -205,17 +253,9 @@ def converse(model: Model, voice: PiperVoice, local_ai: ollama.Client) -> None:
             speak(voice, farewell)
             return
 
-        app_request = requested_application(user_text)
+        app_request = requested_target(user_text)
         if app_request is not None:
-            if app_request and open_application(app_request):
-                reply = f"Abriendo {app_request}."
-            elif app_request:
-                reply = f"No he encontrado {app_request} en este equipo."
-            else:
-                reply = (
-                    "Puedo abrir Teams, Cursor, el bloc de notas, la calculadora "
-                    "o el navegador. ¿Cuál quieres?"
-                )
+            _, reply = open_requested_target(app_request)
             print(f"Mateo: {reply}")
             speak(voice, reply)
             continue

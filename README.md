@@ -9,7 +9,7 @@ Proyecto en Python con dos motores de conversación:
 
 Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
 
-Durante una conversación también puedes pedirle que abra **Teams**, **Cursor**, el **bloc de notas**, la **calculadora** o el **navegador** (por ejemplo, «abre Teams»). Las aplicaciones disponibles están limitadas a esa lista por seguridad.
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams» o «abre Minecraft». Busca accesos directos del menú Inicio y del escritorio. También encuentra carpetas en el escritorio, Documentos, Descargas y OneDrive. Si hay varias coincidencias te preguntará cuál abrir. Mateo solo puede abrir elementos que Windows muestre mediante esos accesos o carpetas; no ejecuta órdenes arbitrarias dictadas por voz.
 
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
