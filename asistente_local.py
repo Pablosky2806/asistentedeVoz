@@ -48,6 +48,23 @@ OPEN_ACTIONS = (
     "lanza", "ejecuta", "arranca", "arrancar",
 )
 LAUNCH_TARGETS: list[tuple[str, Path]] | None = None
+SPEECH_APP_HINTS = (
+    "Microsoft Teams", "Teams", "Steam", "WhatsApp", "Disney Plus", "Discord",
+    "Spotify", "Cursor", "Chrome", "Edge",
+)
+ASR_NAME_ALIASES = {
+    "tims": "teams",
+    "tim": "teams",
+    "team": "teams",
+    "microsoft tims": "microsoft teams",
+    "whats app": "whatsapp",
+    "whats up": "whatsapp",
+    "what sap": "whatsapp",
+    "guasap": "whatsapp",
+    "wasap": "whatsapp",
+    "watsap": "whatsapp",
+    "wats app": "whatsapp",
+}
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
 Responde de forma natural, cercana y breve, normalmente en una o tres frases.
@@ -130,13 +147,33 @@ def get_launch_targets() -> list[tuple[str, Path]]:
     return targets
 
 
-def open_requested_target(query: str) -> tuple[str, str]:
-    """Abre el mejor acceso directo o carpeta que coincide con la petición."""
+def open_requested_target(query: str, allow_similar_names: bool = False) -> tuple[str, str]:
+    """Abre el acceso directo de aplicación o juego que coincide con la petición."""
     if not query:
-        return "empty", "Dime el nombre de la aplicación, juego o carpeta."
+        return "empty", "Dime el nombre de la aplicación o juego."
 
     normalized_query = normalize_text(query)
     candidates = get_launch_targets()
+    installed_names = {name for name, _path in candidates}
+
+    # "Teams" y "Steam" se confunden al hablar español. Confirma "Steam"
+    # antes de abrirlo para no ejecutar la aplicación equivocada.
+    has_teams = any("teams" in name for name in installed_names)
+    has_steam = any("steam" in name for name in installed_names)
+    teams_sounds_like_steam = (
+        normalized_query in {"teams", "team", "tims", "tim"}
+        and has_steam
+        and not has_teams
+    )
+    steam_sounds_like_teams = normalized_query == "steam"
+    if not allow_similar_names and (teams_sounds_like_steam or steam_sounds_like_teams):
+        return (
+            "clarify",
+            "He oído Steam, pero podría ser Microsoft Teams. Di el nombre completo: "
+            "Microsoft Teams o Steam.",
+        )
+
+    normalized_query = ASR_NAME_ALIASES.get(normalized_query, normalized_query)
     query_tokens = set(normalized_query.split())
 
     def match_score(name: str) -> float:
@@ -153,7 +190,7 @@ def open_requested_target(query: str) -> tuple[str, str]:
         ((match_score(name), name, path) for name, path in candidates if name),
         reverse=True,
     )
-    if not ranked or ranked[0][0] < 0.68:
+    if not ranked or ranked[0][0] < 0.82:
         return "missing", f"No encuentro una aplicación o juego llamado {query}."
 
     best_score, best_name, best_path = ranked[0]
@@ -212,6 +249,12 @@ def capture_text(
                             task="transcribe",
                             beam_size=3,
                             condition_on_previous_text=False,
+                            hotwords=", ".join(
+                                [
+                                    *SPEECH_APP_HINTS,
+                                    *sorted({name for name, _path in get_launch_targets()})[:20],
+                                ]
+                            ),
                         )
                         transcript = " ".join(segment.text.strip() for segment in segments).strip()
                         if transcript:
@@ -292,9 +335,21 @@ def converse(
 
         app_request = requested_target(user_text)
         if app_request is not None:
-            _, reply = open_requested_target(app_request)
+            result, reply = open_requested_target(app_request)
             print(f"Mateo: {reply}")
             speak(voice, reply)
+            if result == "clarify":
+                choice_text = capture_text(model, transcriber=transcriber)
+                print(f"Tú: {choice_text}")
+                choice = normalize_text(choice_text)
+                if "microsoft" in choice or "teams" in choice or "tims" in choice:
+                    result, reply = open_requested_target("teams", allow_similar_names=True)
+                elif "steam" in choice:
+                    result, reply = open_requested_target("steam", allow_similar_names=True)
+                else:
+                    reply = "De acuerdo, no abriré ninguna aplicación."
+                print(f"Mateo: {reply}")
+                speak(voice, reply)
             continue
 
         messages.append({"role": "user", "content": user_text})
