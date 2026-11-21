@@ -5,6 +5,9 @@ import json
 import difflib
 import os
 import re
+import shutil
+import subprocess
+import time
 import unicodedata
 import wave
 from pathlib import Path
@@ -46,9 +49,11 @@ OPEN_ACTIONS = (
     "abre", "abreme", "abres", "abra", "abras", "habra", "habras",
     "abrir", "abrirme", "abrirlo", "abrirla",
     "inicia", "iniciar",
-    "lanza", "ejecuta", "arranca", "arrancar",
+    "lanza", "ejecuta", "arranca", "arrancar", "enciende", "poner", "pon", "ponme",
+    "llevame a", "lleva a", "ve a", "muestrame", "ensename", "busca",
 )
 LAUNCH_TARGETS: list[tuple[str, Path]] | None = None
+FOLDER_TARGETS: list[tuple[str, Path]] | None = None
 SPEECH_APP_HINTS = (
     "Microsoft Teams", "Teams", "Steam", "WhatsApp", "Disney Plus", "Discord",
     "Spotify", "Cursor", "Chrome", "Edge",
@@ -137,12 +142,16 @@ def requested_target(text: str) -> str | None:
     if not match:
         return None
     target = match.group(1)
+    folder_match = re.search(r"\b(?:carpeta|directorio)\s+(.+)$", target)
+    if folder_match:
+        target = folder_match.group(1)
     target = re.sub(
-        r"^(?:(?:por favor|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|de|el|la|los|las|un|una|me) )+",
+        r"^(?:(?:por favor|porfa|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|directorio|carpeta|llamada|llamado|que se llama|mis|mi|del|de|el|la|los|las|un|una|me|puedes|puede) )+",
         "",
         target,
     )
-    target = re.sub(r"\s+(?:por favor|porfa)$", "", target).strip()
+    target = re.sub(r"\s+(?:por favor|porfa|gracias)$", "", target).strip()
+    target = re.sub(r"\s+(?:que esta en|que esta dentro de|dentro de|en) (?:el )?(?:escritorio|desktop|documentos|descargas)$", "", target).strip()
     return target
 
 
@@ -155,9 +164,12 @@ def get_launch_targets() -> list[tuple[str, Path]]:
     appdata = Path(os.environ.get("APPDATA", ""))
     programdata = Path(os.environ.get("PROGRAMDATA", "C:\\ProgramData"))
     home = Path.home()
+    local_app_data = Path(os.environ.get("LOCALAPPDATA", home / "AppData" / "Local"))
+    windows_apps = local_app_data / "Microsoft" / "WindowsApps"
     roots = {
         appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
         programdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
+        windows_apps,
         home / "Desktop",
         Path(os.environ["OneDrive"]) / "Desktop" if os.environ.get("OneDrive") else None,
     }
@@ -165,7 +177,12 @@ def get_launch_targets() -> list[tuple[str, Path]]:
 
     for root in (path for path in roots if path and path.is_dir()):
         is_start_menu = "Start Menu" in str(root)
+        is_windows_apps = root == windows_apps
         try:
+            if is_windows_apps:
+                for executable in root.glob("*.exe"):
+                    targets.append((normalize_text(executable.stem), executable))
+                continue
             if is_start_menu:
                 for shortcut in root.rglob("*"):
                     if shortcut.is_file() and shortcut.suffix.lower() in {".lnk", ".url"}:
@@ -180,16 +197,163 @@ def get_launch_targets() -> list[tuple[str, Path]]:
         except OSError:
             continue
 
+    # Incluye aplicaciones de Microsoft Store que Windows expone en Inicio,
+    # aunque no tengan un .lnk tradicional.
+    try:
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-Command",
+                "Get-StartApps | Select-Object Name, AppID | ConvertTo-Json -Compress",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=12,
+            check=True,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        start_apps = json.loads(result.stdout or "[]")
+        if isinstance(start_apps, dict):
+            start_apps = [start_apps]
+        for app in start_apps:
+            name = normalize_text(str(app.get("Name", "")))
+            app_id = str(app.get("AppID", "")).strip()
+            if name and app_id:
+                targets.append((name, Path(f"shell:AppsFolder\\{app_id}")))
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        pass
+
     LAUNCH_TARGETS = targets
     return targets
 
 
-def open_requested_target(query: str, allow_similar_names: bool = False) -> tuple[str, str]:
+def launch_target(path: Path) -> None:
+    """Abre un acceso directo normal o una app registrada por Windows."""
+    target = str(path)
+    if target.startswith("shell:AppsFolder\\"):
+        subprocess.Popen(
+            ["explorer.exe", target],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    else:
+        os.startfile(target)
+
+
+def get_folder_targets() -> list[tuple[str, Path]]:
+    """Busca carpetas del usuario en ubicaciones conocidas, sin recorrer todo el disco."""
+    global FOLDER_TARGETS
+    if FOLDER_TARGETS is not None:
+        return FOLDER_TARGETS
+
+    home = Path.home()
+    roots = {
+        home,
+        Path(os.environ["OneDrive"]) if os.environ.get("OneDrive") else None,
+        Path(os.environ["OneDriveConsumer"]) if os.environ.get("OneDriveConsumer") else None,
+    }
+    excluded = {
+        "appdata", "windows", "program files", "program files (x86)",
+        "node_modules", ".git", ".venv", "venv", "env",
+    }
+    targets: list[tuple[str, Path]] = []
+    seen: set[tuple[str, str]] = set()
+
+    for root in (path for path in roots if path and path.is_dir()):
+        try:
+            for current, directories, _files in os.walk(root):
+                current_path = Path(current)
+                depth = len(current_path.relative_to(root).parts)
+                directories[:] = [
+                    name for name in directories
+                    if not name.startswith(".") and name.casefold() not in excluded
+                ]
+                if depth >= 5:
+                    directories.clear()
+                    continue
+                for name in directories:
+                    normalized_name = normalize_text(name)
+                    folder_path = current_path / name
+                    identity = (normalized_name, str(folder_path).casefold())
+                    if normalized_name and identity not in seen:
+                        seen.add(identity)
+                        targets.append((normalized_name, folder_path))
+        except (OSError, ValueError):
+            continue
+
+    FOLDER_TARGETS = targets
+    return FOLDER_TARGETS
+
+
+def open_requested_target(
+    query: str,
+    allow_similar_names: bool = False,
+    folder_only: bool = False,
+) -> tuple[str, str]:
     """Abre el acceso directo de aplicación o juego que coincide con la petición."""
     if not query:
         return "empty", "Dime el nombre de la aplicación o juego."
 
+    explicit_path = Path(os.path.expandvars(query.strip().strip('"'))).expanduser()
+    if explicit_path.is_dir() and (
+        explicit_path.is_absolute() or "\\" in query or "/" in query
+    ):
+        try:
+            launch_target(explicit_path)
+        except OSError:
+            return "error", f"He encontrado esa ruta, pero Windows no pudo abrirla."
+        return "opened", "Abriendo la carpeta indicada."
+
     normalized_query = normalize_text(query)
+    known_folders = {
+        "escritorio": {"desktop", "escritorio"},
+        "descargas": {"downloads", "descargas"},
+        "documentos": {"documents", "documentos"},
+        "imagenes": {"pictures", "imagenes", "pictures"},
+        "musica": {"music", "musica"},
+    }
+    folder_names = known_folders.get(normalized_query, {normalized_query})
+    folder_only = folder_only or normalized_query in known_folders or normalized_query in {
+        "desktop", "downloads", "documents", "pictures", "music", "videos"
+    }
+
+    if folder_only:
+        folder_candidates = get_folder_targets()
+        exact_folder = next(
+            ((name, path) for name, path in folder_candidates if name in folder_names),
+            None,
+        )
+        matching_folders = [
+            (name, path) for name, path in folder_candidates if name in folder_names
+        ]
+        if len(matching_folders) > 1:
+            options = " o ".join(str(path) for _name, path in matching_folders[:3])
+            return "ambiguous", f"Hay varias carpetas con ese nombre: {options}. ¿Cuál quieres?"
+        if exact_folder:
+            folder_name, folder_path = exact_folder
+        else:
+            ranked_folders = sorted(
+                (
+                    (max(difflib.SequenceMatcher(None, variant, name).ratio() for variant in folder_names), name, path)
+                    for name, path in folder_candidates
+                ),
+                reverse=True,
+            )
+            if not ranked_folders or ranked_folders[0][0] < 0.86:
+                return "missing", f"No encuentro una carpeta llamada {query} en tus ubicaciones habituales."
+            if len(ranked_folders) > 1 and ranked_folders[0][0] - ranked_folders[1][0] < 0.08:
+                options = " o ".join(str(item[2]) for item in ranked_folders[:2])
+                return "ambiguous", f"He encontrado varias carpetas parecidas: {options}. ¿Cuál quieres?"
+            _score, folder_name, folder_path = ranked_folders[0]
+        try:
+            launch_target(folder_path)
+        except OSError:
+            return "error", f"He encontrado la carpeta {folder_name}, pero Windows no pudo abrirla."
+        return "opened", f"Abriendo la carpeta {folder_name}."
+
     candidates = get_launch_targets()
     installed_names = {name for name, _path in candidates}
 
@@ -228,6 +392,46 @@ def open_requested_target(query: str, allow_similar_names: bool = False) -> tupl
         reverse=True,
     )
     if not ranked or ranked[0][0] < 0.82:
+        executable = shutil.which(query) or shutil.which(f"{query}.exe")
+        if executable:
+            try:
+                launch_target(Path(executable))
+            except OSError:
+                return "error", f"He encontrado {query}, pero Windows no pudo abrirlo."
+            return "opened", f"Abriendo {query}."
+
+        folder_candidates = get_folder_targets()
+        exact_folder = next(
+            ((name, path) for name, path in folder_candidates if name == normalized_query),
+            None,
+        )
+        if exact_folder:
+            folder_name, folder_path = exact_folder
+            try:
+                launch_target(folder_path)
+            except OSError:
+                return "error", f"He encontrado la carpeta {folder_name}, pero Windows no pudo abrirla."
+            return "opened", f"Abriendo la carpeta {folder_name}."
+
+        if folder_candidates:
+            ranked_folders = sorted(
+                (
+                    (max(difflib.SequenceMatcher(None, variant, name).ratio() for variant in {normalized_query}), name, path)
+                    for name, path in folder_candidates
+                ),
+                reverse=True,
+            )
+            if ranked_folders and ranked_folders[0][0] >= 0.90:
+                if len(ranked_folders) > 1 and ranked_folders[0][0] - ranked_folders[1][0] < 0.08:
+                    options = " o ".join(str(item[2]) for item in ranked_folders[:2])
+                    return "ambiguous", f"He encontrado varias carpetas parecidas: {options}. ¿Cuál quieres?"
+                _score, folder_name, folder_path = ranked_folders[0]
+                try:
+                    launch_target(folder_path)
+                except OSError:
+                    return "error", f"He encontrado la carpeta {folder_name}, pero Windows no pudo abrirla."
+                return "opened", f"Abriendo la carpeta {folder_name}."
+
         web_target = WEB_APP_TARGETS.get(normalized_query)
         if web_target:
             display_name, url = web_target
@@ -240,7 +444,8 @@ def open_requested_target(query: str, allow_similar_names: bool = False) -> tupl
 
     best_score, best_name, best_path = ranked[0]
     if (
-        len(ranked) > 1
+        best_score < 1.0
+        and len(ranked) > 1
         and best_name != ranked[1][1]
         and best_score - ranked[1][0] < 0.08
     ):
@@ -248,7 +453,7 @@ def open_requested_target(query: str, allow_similar_names: bool = False) -> tupl
         return "ambiguous", f"He encontrado varias coincidencias: {options}. ¿Cuál quieres?"
 
     try:
-        os.startfile(str(best_path))
+        launch_target(best_path)
     except OSError:
         return "error", f"He encontrado {best_name}, pero Windows no pudo abrirlo."
     return "opened", f"Abriendo {best_name}."
@@ -297,7 +502,8 @@ def capture_text(
                             hotwords=", ".join(
                                 [
                                     *SPEECH_APP_HINTS,
-                                    *sorted({name for name, _path in get_launch_targets()})[:20],
+                                    *sorted({name for name, _path in get_launch_targets()})[:60],
+                                    *sorted({name for name, _path in get_folder_targets()})[:60],
                                 ]
                             ),
                         )
@@ -357,6 +563,68 @@ def speak(voice: PiperVoice, text: str) -> None:
         audio.terminate()
 
 
+def prepare_local_ai(local_ai: ollama.Client) -> str | None:
+    """Espera a Ollama, verifica el modelo y lo calienta antes de escuchar al usuario."""
+    ollama_executable = shutil.which("ollama")
+    if not ollama_executable:
+        local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        possible_paths = (
+            local_app_data / "Programs" / "Ollama" / "ollama.exe",
+            Path(os.environ.get("PROGRAMFILES", "C:\\Program Files")) / "Ollama" / "ollama.exe",
+        )
+        ollama_executable = next((str(path) for path in possible_paths if path.is_file()), None)
+
+    print("Comprobando Ollama y el modelo local...", flush=True)
+    deadline = time.monotonic() + 90
+    service_started = False
+    last_notice = 0.0
+
+    while time.monotonic() < deadline:
+        try:
+            model_list = local_ai.list()
+            models = getattr(model_list, "models", []) or []
+            model_names = {
+                str(getattr(model, "model", "") or getattr(model, "name", "")).casefold()
+                for model in models
+            }
+            if OLLAMA_MODEL.casefold() not in model_names:
+                return (
+                    f"No encuentro el modelo local {OLLAMA_MODEL}. "
+                    f"Abre PowerShell y ejecuta: ollama pull {OLLAMA_MODEL}."
+                )
+
+            print("Preparando el modelo local para la primera respuesta...", flush=True)
+            local_ai.generate(
+                model=OLLAMA_MODEL,
+                prompt="Responde únicamente: listo.",
+                options={"temperature": 0, "num_predict": 2},
+                keep_alive="30m",
+            )
+            print("Modelo conversacional listo.", flush=True)
+            return None
+        except Exception:
+            if not service_started and ollama_executable:
+                try:
+                    subprocess.Popen(
+                        [ollama_executable, "serve"],
+                        stdin=subprocess.DEVNULL,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+                except OSError:
+                    pass
+                service_started = True
+
+            elapsed = time.monotonic() - last_notice
+            if elapsed >= 10:
+                print("Esperando a que Ollama esté disponible...", flush=True)
+                last_notice = time.monotonic()
+            time.sleep(2)
+
+    return "No consigo conectar con Ollama. Comprueba que Ollama esté abierto e inténtalo de nuevo."
+
+
 def converse(
     model: Model,
     voice: PiperVoice,
@@ -384,7 +652,9 @@ def converse(
 
         app_request = requested_target(user_text)
         if app_request is not None:
-            result, reply = open_requested_target(app_request)
+            command_words = set(normalize_text(user_text).split())
+            folder_only = bool(command_words & {"carpeta", "directorio"})
+            result, reply = open_requested_target(app_request, folder_only=folder_only)
             print(f"Mateo: {reply}")
             speak(voice, reply)
             if result == "clarify":
@@ -407,10 +677,11 @@ def converse(
                 model=OLLAMA_MODEL,
                 messages=messages,
                 options={"temperature": 0.7, "num_ctx": 4_096},
+                keep_alive="30m",
             )
         except Exception as error:
             print(f"No puedo conectar con el modelo local de Ollama: {error}")
-            speak(voice, "Ahora mismo no puedo conectar con mi modelo local.")
+            speak(voice, "Señor, en este momento no puedo conectar con mi modelo local. Compruebe que Ollama siga abierto.")
             return
 
         assistant_text = response.message.content.strip()
@@ -449,6 +720,11 @@ def main() -> None:
     print("Cargando voz local de Mateo...")
     voice = PiperVoice.load(str(PIPER_VOICE_PATH))
     local_ai = ollama.Client(host="http://localhost:11434")
+    readiness_error = prepare_local_ai(local_ai)
+    if readiness_error:
+        print(readiness_error, flush=True)
+        speak(voice, readiness_error)
+        return
     print(
         f"Mateo está listo. Modelos locales: {OLLAMA_MODEL} y Whisper {WHISPER_MODEL_SIZE}. "
         "Pulsa Ctrl+C para salir."

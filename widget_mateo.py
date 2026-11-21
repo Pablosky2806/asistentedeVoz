@@ -164,6 +164,13 @@ class MateoWidget:
     def _handle_output_line(self, line: str) -> None:
         if "Mateo está listo" in line:
             self._set_state("En espera", 'Di «Oye, Mateo»')
+        elif line.startswith("Comprobando Ollama") or line.startswith("Preparando el modelo local"):
+            self._set_state("Preparando", "Preparando el modelo local…")
+        elif line.startswith("Esperando a que Ollama"):
+            self._set_state("Preparando", "Esperando a Ollama…")
+        elif line.startswith("No encuentro el modelo local") or line.startswith("No consigo conectar con Ollama"):
+            self._add_transcript("Mateo", line)
+            self._set_state("Error", "Revisa Ollama y su modelo")
         elif line.startswith("Esperando"):
             self._set_state("En espera", 'Di «Oye, Mateo»')
         elif line.startswith("Activación detectada"):
@@ -244,7 +251,7 @@ class MateoWidget:
             elif event == "exit" and self.process is not None:
                 self.process = None
                 self.toggle_button.configure(text="Iniciar Mateo")
-                if self.state != "Detenido":
+                if self.state not in {"Detenido", "Error"}:
                     self._set_state("Detenido", "Pulsa el widget para iniciar Mateo")
         self.root.after(100, self._read_events)
 

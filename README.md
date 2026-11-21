@@ -9,7 +9,7 @@ Proyecto en Python con dos motores de conversación:
 
 Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, faster-whisper transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
 
-Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams», «me abres WhatsApp» o «inicia Disney Plus». Whisper recibe sugerencias con nombres de aplicaciones y juegos instalados. Mateo busca accesos directos del menú Inicio y del escritorio; si confunde Steam con Teams, te pedirá que confirmes antes de abrirlo. Si no encuentra un acceso directo de Disney+, WhatsApp o Teams, intentará abrir el servicio en el navegador y no afirmará que está desinstalado. La búsqueda de carpetas se ampliará en una fase posterior.
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, o una carpeta con frases como «abre Teams», «ábreme la carpeta Fotos» o «enséñame Descargas». Busca accesos directos del menú Inicio y el escritorio, aplicaciones que Windows registra en Inicio y carpetas del perfil de usuario y OneDrive. La búsqueda de carpetas se limita a cinco niveles de profundidad. Si hay nombres parecidos o carpetas duplicadas, pregunta cuál abrir. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
 
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
@@ -73,7 +73,7 @@ py -3.13 widget_mateo.py
 powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1
 ```
 
-Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows. Ollama debe estar instalado y ejecutándose para generar respuestas.
+Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Al iniciar, Mateo comprueba que Ollama responde, busca `qwen3:8b` y lo prepara antes de empezar a escuchar. Si el modelo no está descargado, Mateo te lo indicará y podrás instalarlo con `ollama pull qwen3:8b`. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows.
 
 ## Seguimiento del proyecto
 
