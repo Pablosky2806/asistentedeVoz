@@ -28,6 +28,7 @@ OLLAMA_MODEL = "qwen3:8b"
 WHISPER_MODEL_SIZE = "small"
 WHISPER_MODEL_PATH = Path(__file__).parent / "modelos" / "whisper"
 MEMORY_PATH = Path(__file__).parent / "datos" / "memoria_mateo.json"
+WIDGET_STATE_PATH = Path(__file__).parent / "datos" / "estado_widget.json"
 MAX_MEMORY_FACTS = 50
 MAX_MEMORY_FACT_LENGTH = 300
 WAKE_PHRASES = ("oye mateo", "illo mateo", "y yo mateo")
@@ -196,10 +197,12 @@ def load_memory() -> dict[str, object]:
 def save_memory(memory: dict[str, object]) -> None:
     """Guarda memoria únicamente en un archivo local ignorado por Git."""
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    MEMORY_PATH.write_text(
+    temporary_path = MEMORY_PATH.with_suffix(MEMORY_PATH.suffix + ".tmp")
+    temporary_path.write_text(
         json.dumps(memory, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    temporary_path.replace(MEMORY_PATH)
 
 
 def build_system_prompt(memory: dict[str, object]) -> str:
@@ -244,6 +247,15 @@ def yes_or_no(text: str) -> bool | None:
     if answer in {"no", "no gracias", "cancelar", "dejalo", "mejor no"}:
         return False
     return None
+
+
+def microphone_is_enabled() -> bool:
+    """Lee el control local que el widget usa para pausar y reanudar el micrófono."""
+    try:
+        state = json.loads(WIDGET_STATE_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    return not isinstance(state, dict) or state.get("microphone_enabled", True) is not False
 
 
 def requested_target(text: str) -> str | None:
@@ -622,20 +634,48 @@ def capture_text(
     audio = pyaudio.PyAudio()
     stream = None
     audio_chunks: list[bytes] = []
+    microphone_was_paused = False
     try:
-        stream = audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=SAMPLE_RATE,
-            input=True,
-            frames_per_buffer=4_000,
-        )
-        stream.start_stream()
         while True:
+            if not microphone_is_enabled():
+                if stream is not None:
+                    stream.stop_stream()
+                    stream.close()
+                    stream = None
+                audio_chunks.clear()
+                recognizer = (
+                    KaldiRecognizer(model, SAMPLE_RATE, grammar)
+                    if grammar
+                    else KaldiRecognizer(model, SAMPLE_RATE)
+                )
+                if not microphone_was_paused:
+                    print("Micrófono pausado desde el widget.", flush=True)
+                    microphone_was_paused = True
+                time.sleep(0.25)
+                continue
+
+            if stream is None:
+                stream = audio.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=SAMPLE_RATE,
+                    input=True,
+                    frames_per_buffer=4_000,
+                )
+                stream.start_stream()
+                if microphone_was_paused:
+                    print("Micrófono reanudado desde el widget.", flush=True)
+                    microphone_was_paused = False
+
             audio_chunk = stream.read(4_000, exception_on_overflow=False)
+            if not microphone_is_enabled():
+                continue
             if transcriber is not None and grammar is None:
                 audio_chunks.append(audio_chunk)
             if recognizer.AcceptWaveform(audio_chunk):
+                stream.stop_stream()
+                stream.close()
+                stream = None
                 text = json.loads(recognizer.Result()).get("text", "").strip()
                 if transcriber is not None and grammar is None:
                     pcm = np.frombuffer(b"".join(audio_chunks), dtype=np.int16)
@@ -659,8 +699,12 @@ def capture_text(
                         )
                         transcript = " ".join(segment.text.strip() for segment in segments).strip()
                         if transcript:
+                            if not microphone_is_enabled():
+                                continue
                             return transcript
                 elif text:
+                    if not microphone_is_enabled():
+                        continue
                     return text
     finally:
         if stream is not None:
@@ -790,6 +834,11 @@ def converse(
         print("Te escucho...")
         user_text = capture_text(model, transcriber=transcriber)
         print(f"Tú: {user_text}")
+
+        latest_memory = load_memory()
+        if latest_memory != memory:
+            memory = latest_memory
+            messages = [{"role": "system", "content": build_system_prompt(memory)}]
 
         if not user_text:
             speak(voice, "No te he entendido bien. ¿Puedes repetirlo, por favor?")

@@ -79,7 +79,7 @@ py -3.13 widget_mateo.py
 
 ## Inicio automático
 
-`widget_mateo.py` muestra una cápsula flotante arriba de la pantalla con el icono y estado de Mateo. Al desplegarla se ve la actividad reciente y los controles. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
+`widget_mateo.py` muestra una cápsula flotante arriba de la pantalla con el icono y estado de Mateo. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1

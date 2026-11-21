@@ -1,17 +1,21 @@
 """Widget flotante para consultar y controlar el asistente local Mateo."""
 
 import os
+import json
 import queue
 import subprocess
 import sys
 import threading
 import tkinter as tk
 from pathlib import Path
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 
 BASE_DIR = Path(__file__).parent
 ASSISTANT_SCRIPT = BASE_DIR / "asistente_local.py"
+DATA_DIR = BASE_DIR / "datos"
+MEMORY_PATH = DATA_DIR / "memoria_mateo.json"
+WIDGET_STATE_PATH = DATA_DIR / "estado_widget.json"
 BACKGROUND = "#17131f"
 PANEL = "#211b2b"
 TEXT = "#f7f2ff"
@@ -33,6 +37,7 @@ class MateoWidget:
         self.expanded = False
         self.animation_step = 0
         self.drag_offset = (0, 0)
+        self.microphone_enabled = self._read_widget_state()
 
         self._build_widget()
         self._position_widget()
@@ -104,19 +109,175 @@ class MateoWidget:
         self.transcript.pack(fill="both", expand=True, padx=2)
         controls = tk.Frame(self.details, bg=PANEL)
         controls.pack(fill="x", padx=9, pady=8)
-        self.toggle_button = ttk.Button(
-            controls, text="Detener Mateo", style="Mateo.TButton", command=self.toggle_assistant
+        assistant_controls = tk.Frame(controls, bg=PANEL)
+        assistant_controls.pack(fill="x", pady=(0, 6))
+        self.microphone_button = ttk.Button(
+            assistant_controls,
+            text="Pausar micrófono" if self.microphone_enabled else "Reanudar micrófono",
+            style="Mateo.TButton",
+            command=self.toggle_microphone,
         )
-        self.toggle_button.pack(side="left")
+        self.microphone_button.pack(side="left")
+        self.toggle_button = ttk.Button(
+            assistant_controls, text="Cerrar Mateo", style="Mateo.TButton", command=self.toggle_assistant
+        )
+        self.toggle_button.pack(side="right")
+
+        self.memory_status_label = tk.Label(
+            controls, text="Memoria local: comprobando…", bg=PANEL, fg=MUTED,
+            font=("Segoe UI", 8), anchor="w",
+        )
+        self.memory_status_label.pack(fill="x", pady=(2, 4))
+        memory_controls = tk.Frame(controls, bg=PANEL)
+        memory_controls.pack(fill="x", pady=(0, 6))
+        self.memory_toggle_button = ttk.Button(
+            memory_controls, text="Desactivar memoria", style="Mateo.TButton",
+            command=self.toggle_memory,
+        )
+        self.memory_toggle_button.pack(side="left")
         ttk.Button(
-            controls, text="Ocultar widget", style="Mateo.TButton", command=self._collapse
+            memory_controls, text="Ver archivo", style="Mateo.TButton",
+            command=self.open_memory_file,
         ).pack(side="right")
+
+        privacy_controls = tk.Frame(controls, bg=PANEL)
+        privacy_controls.pack(fill="x")
+        ttk.Button(
+            privacy_controls, text="Borrar memoria", style="Mateo.TButton",
+            command=self.clear_memory,
+        ).pack(side="left")
+        ttk.Button(
+            privacy_controls, text="Ocultar widget", style="Mateo.TButton",
+            command=self._collapse,
+        ).pack(side="right")
+        self._refresh_privacy_controls()
 
         self._bind_drag(self.header)
         self._bind_drag(self.icon)
         self._bind_drag(labels)
         for child in labels.winfo_children():
             self._bind_drag(child)
+
+    def _read_widget_state(self) -> bool:
+        try:
+            state = json.loads(WIDGET_STATE_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return True
+        return not isinstance(state, dict) or state.get("microphone_enabled", True) is not False
+
+    def _read_memory_file(self) -> tuple[dict[str, object], bool]:
+        if not MEMORY_PATH.exists():
+            return {"enabled": True, "facts": []}, True
+        try:
+            data = json.loads(MEMORY_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"enabled": True, "facts": []}, False
+        if not isinstance(data, dict) or not isinstance(data.get("facts", []), list):
+            return {"enabled": True, "facts": []}, False
+        facts = [fact for fact in data.get("facts", []) if isinstance(fact, str)]
+        return {"enabled": data.get("enabled", True) is not False, "facts": facts}, True
+
+    @staticmethod
+    def _write_json_file(path: Path, data: dict[str, object]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = path.with_suffix(path.suffix + ".tmp")
+        temporary_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(path)
+
+    def _refresh_privacy_controls(self, schedule_next: bool = True) -> None:
+        if not self.root.winfo_exists():
+            return
+        self.microphone_enabled = self._read_widget_state()
+        self.microphone_button.configure(
+            text="Pausar micrófono" if self.microphone_enabled else "Reanudar micrófono"
+        )
+        memory, valid = self._read_memory_file()
+        if valid:
+            enabled = memory.get("enabled") is not False
+            facts = memory.get("facts", [])
+            count = len(facts) if isinstance(facts, list) else 0
+            self.memory_status_label.configure(
+                text=f"Memoria local: {'activada' if enabled else 'desactivada'} · {count} datos"
+            )
+            self.memory_toggle_button.configure(
+                state="normal",
+                text="Desactivar memoria" if enabled else "Activar memoria",
+            )
+        else:
+            self.memory_status_label.configure(text="Memoria local: archivo no válido")
+            self.memory_toggle_button.configure(state="disabled")
+        if schedule_next:
+            self.root.after(1000, self._refresh_privacy_controls)
+
+    def toggle_microphone(self) -> None:
+        enabled = not self._read_widget_state()
+        try:
+            self._write_json_file(WIDGET_STATE_PATH, {"microphone_enabled": enabled})
+        except OSError as error:
+            messagebox.showerror("Mateo", f"No he podido cambiar el micrófono: {error}")
+            return
+        self.microphone_enabled = enabled
+        self.microphone_button.configure(
+            text="Pausar micrófono" if enabled else "Reanudar micrófono"
+        )
+        if enabled:
+            self._set_state("En espera", "Micrófono reanudado")
+        else:
+            self._set_state("Pausado", "Micrófono pausado")
+
+    def toggle_memory(self) -> None:
+        memory, valid = self._read_memory_file()
+        if not valid:
+            messagebox.showerror("Mateo", "El archivo de memoria no es válido. Ábrelo y corrígelo antes de cambiar el ajuste.")
+            return
+        memory["enabled"] = memory.get("enabled") is False
+        try:
+            self._write_json_file(MEMORY_PATH, memory)
+        except OSError as error:
+            messagebox.showerror("Mateo", f"No he podido actualizar la memoria: {error}")
+            return
+        enabled = memory["enabled"] is True
+        messagebox.showinfo(
+            "Mateo",
+            "Memoria activada. Mateo leerá las notas locales en el siguiente turno."
+            if enabled
+            else "Memoria desactivada. Las notas se conservan, pero Mateo dejará de usarlas en el siguiente turno.",
+        )
+        self._refresh_privacy_controls(schedule_next=False)
+
+    def open_memory_file(self) -> None:
+        if not MEMORY_PATH.exists():
+            try:
+                self._write_json_file(MEMORY_PATH, {"enabled": True, "facts": []})
+            except OSError as error:
+                messagebox.showerror("Mateo", f"No he podido crear el archivo de memoria: {error}")
+                return
+        try:
+            os.startfile(str(MEMORY_PATH))
+        except OSError as error:
+            messagebox.showerror("Mateo", f"No he podido abrir el archivo de memoria: {error}")
+
+    def clear_memory(self) -> None:
+        memory, valid = self._read_memory_file()
+        if not valid:
+            messagebox.showerror("Mateo", "El archivo de memoria no es válido. Ábrelo y corrígelo antes de borrarlo desde aquí.")
+            return
+        if not messagebox.askyesno(
+            "Borrar memoria local",
+            "¿Quieres borrar todos los datos guardados? Mateo actualizará su contexto en el siguiente turno.",
+        ):
+            return
+        memory["facts"] = []
+        try:
+            self._write_json_file(MEMORY_PATH, memory)
+        except OSError as error:
+            messagebox.showerror("Mateo", f"No he podido borrar la memoria: {error}")
+            return
+        self._add_transcript("Privacidad", "Memoria local borrada")
+        self._refresh_privacy_controls(schedule_next=False)
 
     def _bind_drag(self, widget: tk.Widget) -> None:
         widget.bind("<ButtonPress-1>", self._start_drag)
@@ -143,7 +304,7 @@ class MateoWidget:
         self.expanded = True
         self.details.pack(fill="both", expand=True, padx=1, pady=(0, 1))
         self.expand_button.configure(text="⌃")
-        self.root.geometry(f"360x270+{self.root.winfo_x()}+{self.root.winfo_y()}")
+        self.root.geometry(f"390x355+{self.root.winfo_x()}+{self.root.winfo_y()}")
 
     def _collapse(self) -> None:
         self.expanded = False
@@ -163,6 +324,13 @@ class MateoWidget:
 
     def _handle_output_line(self, line: str) -> None:
         if "Mateo está listo" in line:
+            if self.microphone_enabled:
+                self._set_state("En espera", 'Di «Oye, Mateo»')
+            else:
+                self._set_state("Pausado", "Micrófono pausado")
+        elif line.startswith("Micrófono pausado"):
+            self._set_state("Pausado", "Micrófono pausado")
+        elif line.startswith("Micrófono reanudado"):
             self._set_state("En espera", 'Di «Oye, Mateo»')
         elif line.startswith("Comprobando Ollama") or line.startswith("Preparando el modelo local"):
             self._set_state("Preparando", "Preparando el modelo local…")
@@ -211,7 +379,7 @@ class MateoWidget:
         except OSError as error:
             self._set_state("Error", str(error))
             return
-        self.toggle_button.configure(text="Detener Mateo")
+        self.toggle_button.configure(text="Cerrar Mateo")
         self._set_state("Iniciando", "Cargando…")
         threading.Thread(target=self._read_process_output, daemon=True).start()
 
