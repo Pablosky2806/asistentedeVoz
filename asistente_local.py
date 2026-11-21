@@ -208,7 +208,7 @@ def clean_asr_transcript(text: str) -> str:
     words = normalize_text(text).split()
     if len(words) >= 3 and len(set(words)) == 1:
         return ""
-    return re.sub(r"^\s*(?:run[\s,.;:-]+){3}", "", text, flags=re.IGNORECASE).strip(" ,.;:-")
+    return re.sub(r"^\s*(?:run[\s,.;:-]+){3,}", "", text, flags=re.IGNORECASE).strip(" ,.;:-")
 
 
 def load_memory() -> dict[str, object]:
@@ -579,7 +579,7 @@ def open_requested_target(
             )
             return "ambiguous", f"He encontrado archivos parecidos: {options}. Dime el nombre completo."
         _score, _name, file_path = ranked_files[0]
-        if not exact and ranked_files[0][0] < 0.90:
+        if not exact:
             return "confirm", f"He entendido que buscas el archivo {file_path.name}. ¿Es correcto?"
         try:
             launch_target(file_path)
