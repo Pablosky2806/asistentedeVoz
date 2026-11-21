@@ -1,64 +1,76 @@
-﻿# Asistente de voz con ElevenLabs
+# Mateo: asistente de voz para Windows
 
-Proyecto en Python para mantener conversaciones por voz.
+Proyecto en Python con dos motores de conversación:
 
-## Arquitectura
+- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper con la voz `es_ES-sharvard-medium` para hablar en español, sin emojis ni emoticonos. Mateo usa un trato cortés y pausado, inspirado en un mayordomo.
+- `asistente.py`: versión anterior conectada a ElevenLabs; requiere una clave API y consume la cuota de esa cuenta.
 
-La primera versión usa **ElevenAgents** mediante el SDK oficial de Python. ElevenLabs proporciona el agente conversacional y gestiona la entrada de voz, las transcripciones y el audio de respuesta. El SDK conecta el micrófono y los altavoces del equipo con una sesión del agente.
+## Cómo funciona la versión local
 
-El programa inicia una conversación cuando lo ejecutas y la mantiene hasta que termina el agente o pulsas `Ctrl+C`. No incluye una palabra de activación permanente (por ejemplo, «Oye asistente»); eso se puede añadir en una fase posterior.
+Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. También puedes cerrar directamente el asistente diciendo **«Mateo, ya no te necesito»** o **«Mateo, apágate»**; Mateo se despedirá y cerrará el widget. Durante una conversación, otras despedidas como **«hasta luego»**, **«me voy»** o **«eso es todo»** terminan el turno y Mateo vuelve a esperar la frase de activación.
 
-## Preparación en Windows
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, una carpeta o un archivo. Por ejemplo: «abre Teams», «ábreme la carpeta Pragmata que está en el escritorio» o «busca el archivo presupuesto en Documentos». Busca accesos directos del menú Inicio y el escritorio, carpetas del perfil de usuario y OneDrive, y nombres de archivos en Escritorio, Documentos y Descargas, hasta cinco niveles de profundidad. Si hay coincidencias parecidas, te pregunta antes de abrirlas y usa la ubicación indicada para elegir mejor. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
 
-1. Instala Python 3.10 o posterior.
-2. Crea y activa un entorno virtual:
+## Memoria personal y privacidad
 
-   ```powershell
-   py -m venv .venv
-   .venv\Scripts\Activate.ps1
-   ```
+Mateo solo guarda datos cuando se lo pides explícitamente con «recuerda que…». La memoria se guarda en `datos/memoria_mateo.json` en este equipo, no se sube a GitHub y solo se añade como contexto al modelo local cuando está activada. No guardes contraseñas, tokens ni claves de API.
 
-3. Instala las dependencias:
+- «¿Qué recuerdas de mí?» muestra los datos guardados.
+- «Olvida que…» elimina un dato concreto.
+- «Desactiva la memoria» conserva las notas, pero deja de usarlas y añadir nuevas.
+- «Activa la memoria» vuelve a usar las notas existentes y permite guardar otras a petición.
+- «Borra mi memoria» pide confirmación y elimina todos los datos guardados.
 
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
+También puedes revisar o borrar el archivo local `datos/memoria_mateo.json` manualmente.
 
-4. Copia la plantilla si todavía no existe `.env`:
+Los modelos se descargan una vez y quedan guardados localmente. La transcripción usa detección de actividad de voz para reducir falsos reconocimientos del silencio y descarta bucles como «run, run, run». La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual. La memoria persistente opcional se guarda localmente y puedes controlarla desde el widget.
 
-   ```powershell
-   Copy-Item .env.example .env
-   ```
+## Instalación sencilla en Windows
 
-5. Añade tu API key de ElevenLabs en `ELEVENLABS_API_KEY` dentro de `.env`. La clave se queda en tu equipo y no se sube a GitHub.
+Requisitos: Windows, Python 3.13 y [Ollama para Windows](https://ollama.com/download/windows). Descarga el repositorio y abre PowerShell dentro de su carpeta. Ejecuta una vez:
 
-## Crear y ejecutar el agente
+```powershell
+powershell -ExecutionPolicy Bypass -File .\configurar_mateo.ps1
+```
 
-1. Crea el agente privado en ElevenLabs. El script configura un agente en español con un saludo y un prompt inicial.
-2. Ejecuta una sola vez:
+El instalador crea un entorno Python aislado en `.venv`, instala las dependencias y descarga los modelos de Vosk, Piper y Whisper que falten. Comprueba Ollama y configura el inicio automático de Mateo. Si falta `qwen3:8b`, te pregunta antes de iniciar una descarga de aproximadamente 5,2 GB. Si respondes que no, puedes descargarlo después con `ollama pull qwen3:8b` y volver a ejecutar el instalador.
 
-   ```powershell
-   python crear_agente.py
-   ```
+La primera instalación puede tardar: Whisper ocupa alrededor de 500 MB y el modelo de Ollama varios GB. Los archivos se quedan en este equipo; `modelos/`, `.venv/` y `datos/` están excluidos de Git.
 
-   El script crea el agente mediante la API y escribe su `AGENT_ID` en `.env`. Si ya hay un ID configurado, se detiene para evitar crear duplicados.
+## Ejecutar Mateo sin créditos de API
 
-3. Asegúrate de que Windows tiene micrófono y altavoces configurados y ejecuta:
+Desde la carpeta del proyecto:
 
-   ```powershell
-   python asistente.py
-   ```
+```powershell
+.venv\Scripts\python.exe asistente_local.py
+```
 
-4. Habla con el asistente; pulsa `Ctrl+C` para cerrar la sesión.
+Pulsa `Ctrl+C` para salir. La velocidad de respuesta depende del procesador y del modelo local. Ollama y Piper usan los modelos descargados en el portátil.
 
-Consulta la [guía oficial de agentes](https://elevenlabs.io/docs/eleven-agents/quickstart) y la [API oficial para crear agentes](https://elevenlabs.io/docs/api-reference/agents/create).
+Para abrir el widget flotante de Mateo, ejecuta el acceso directo de Inicio o, desde la carpeta del proyecto:
+
+```powershell
+wscript.exe .\iniciar_mateo.vbs
+```
+
+## Inicio automático
+
+`widget_mateo.py` muestra arriba de la pantalla una mascota flotante con estados animados para escuchar, pensar y hablar. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. El instalador configura el inicio automático al iniciar sesión en Windows; para configurarlo manualmente puedes ejecutar:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1
+```
+
+Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Al iniciar, Mateo comprueba que Ollama responde y prepara `qwen3:8b` antes de empezar a escuchar. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows. El widget usa el entorno `.venv` del proyecto; si no está, intenta usar Python 3.13 instalado en el perfil de Windows.
 
 ## Seguimiento del proyecto
 
 - `main`: base estable.
-- `feature/elevenagents-architecture`: arquitectura y configuración inicial.
+- `feature/elevenagents-architecture`: arquitectura de ElevenAgents.
 - `feature/voice-session`: primera sesión de conversación.
-- `feature/agent-config`: validación de la configuración local.
-- `feature/agent-setup-script`: creación local del agente por API.
+- `feature/agent-config`: validación de configuración.
+- `feature/agent-setup-script`: creación de agente mediante la API.
+- `feature/wake-word`: activación local por frase con Vosk.
+- `feature/local-ai`: conversación local con Vosk, Ollama y Piper.
 
-Los avances se registran en commits pequeños, explicados por fase.
+Los cambios se registran en commits pequeños por fase.
