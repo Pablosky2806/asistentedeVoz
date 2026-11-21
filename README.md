@@ -1,57 +1,63 @@
-﻿# Asistente de voz con ElevenLabs
+# Asistente de voz con ElevenLabs
 
-Proyecto en Python para mantener conversaciones por voz.
+Proyecto en Python para mantener conversaciones por voz con Mateo, un agente de ElevenLabs.
 
-## Arquitectura
+## Cómo funciona
 
-La primera versión usa **ElevenAgents** mediante el SDK oficial de Python. ElevenLabs proporciona el agente conversacional y gestiona la entrada de voz, las transcripciones y el audio de respuesta. El SDK conecta el micrófono y los altavoces del equipo con una sesión del agente.
+Vosk escucha el micrófono localmente y espera una de estas frases: **«Oye, Mateo»** o **«Illo, Mateo»**. Cuando detecta una, inicia una conversación de voz con ElevenLabs. Al terminar la conversación, vuelve a esperar la frase. Pulsa `Ctrl+C` para cerrar el programa.
 
-El programa inicia una conversación cuando lo ejecutas y la mantiene hasta que termina el agente o pulsas `Ctrl+C`. No incluye una palabra de activación permanente (por ejemplo, «Oye asistente»); eso se puede añadir en una fase posterior.
+El audio de espera se procesa en el equipo con el modelo español de Vosk. ElevenLabs recibe audio cuando comienza la conversación con Mateo.
 
 ## Preparación en Windows
 
-1. Instala Python 3.10 o posterior.
-2. Crea y activa un entorno virtual:
+Se recomienda Python 3.13 en Windows para instalar PyAudio sin compilarlo manualmente.
+
+1. Crea y activa un entorno virtual:
 
    ```powershell
-   py -m venv .venv
+   py -3.13 -m venv .venv
    .venv\Scripts\Activate.ps1
    ```
 
-3. Instala las dependencias:
+2. Instala las dependencias:
 
    ```powershell
    python -m pip install -r requirements.txt
    ```
 
-4. Copia la plantilla si todavía no existe `.env`:
+3. Descarga el modelo pequeño de español desde [Vosk Models](https://alphacephei.com/vosk/models) (`vosk-model-small-es-0.42`, aproximadamente 39 MB). Extrae la carpeta dentro de `modelos`, de forma que quede así:
 
-   ```powershell
-   Copy-Item .env.example .env
+   ```text
+   modelos/vosk-model-small-es-0.42/am
+   modelos/vosk-model-small-es-0.42/conf
+   modelos/vosk-model-small-es-0.42/graph
+   modelos/vosk-model-small-es-0.42/ivector
    ```
 
-5. Añade tu API key de ElevenLabs en `ELEVENLABS_API_KEY` dentro de `.env`. La clave se queda en tu equipo y no se sube a GitHub.
+   La carpeta `modelos/` se mantiene en el ordenador y está excluida de Git.
 
-## Crear y ejecutar el agente
+4. Configura `.env` con el ID de tu agente y la clave API:
 
-1. Crea el agente privado en ElevenLabs. El script configura un agente en español con un saludo y un prompt inicial.
-2. Ejecuta una sola vez:
-
-   ```powershell
-   python crear_agente.py
+   ```env
+   AGENT_ID=tu-agent-id
+   ELEVENLABS_API_KEY=tu-clave-api
    ```
 
-   El script crea el agente mediante la API y escribe su `AGENT_ID` en `.env`. Si ya hay un ID configurado, se detiene para evitar crear duplicados.
+   No subas `.env` ni compartas la clave API. Para agentes que requieren autenticación, la clave debe tener permiso de escritura de ElevenAgents para obtener la URL firmada de la conversación.
 
-3. Asegúrate de que Windows tiene micrófono y altavoces configurados y ejecuta:
+## Ejecutar
 
-   ```powershell
-   python asistente.py
-   ```
+Desde la carpeta del proyecto, con el entorno virtual activado:
 
-4. Habla con el asistente; pulsa `Ctrl+C` para cerrar la sesión.
+```powershell
+python asistente.py
+```
 
-Consulta la [guía oficial de agentes](https://elevenlabs.io/docs/eleven-agents/quickstart) y la [API oficial para crear agentes](https://elevenlabs.io/docs/api-reference/agents/create).
+Sin activar el entorno virtual, también puedes ejecutar:
+
+```powershell
+py -3.13 asistente.py
+```
 
 ## Seguimiento del proyecto
 
@@ -59,6 +65,7 @@ Consulta la [guía oficial de agentes](https://elevenlabs.io/docs/eleven-agents/
 - `feature/elevenagents-architecture`: arquitectura y configuración inicial.
 - `feature/voice-session`: primera sesión de conversación.
 - `feature/agent-config`: validación de la configuración local.
-- `feature/agent-setup-script`: creación local del agente por API.
+- `feature/agent-setup-script`: creación de un agente mediante la API.
+- `feature/wake-word`: activación local por frase con Vosk.
 
 Los avances se registran en commits pequeños, explicados por fase.
