@@ -59,6 +59,12 @@ Sin activar el entorno virtual, también puedes ejecutar:
 py -3.13 asistente.py
 ```
 
+## Inicio automático de Windows
+
+`iniciar_mateo.vbs` inicia el asistente sin mostrar una ventana de PowerShell. `detener_mateo.vbs` cierra el proceso de Mateo.
+
+Para iniciar Mateo al iniciar sesión en Windows, crea un acceso directo a `iniciar_mateo.vbs` dentro de la carpeta de inicio del usuario. Abre esa carpeta con `Windows + R`, escribe `shell:startup` y pulsa Enter. Para desactivar el inicio automático, quita ese acceso directo. No inicies Mateo más de una vez a la vez.
+
 ## Seguimiento del proyecto
 
 - `main`: base estable.
