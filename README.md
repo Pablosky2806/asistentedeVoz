@@ -11,6 +11,18 @@ Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, 
 
 Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, o una carpeta con frases como «abre Teams», «ábreme la carpeta Fotos» o «enséñame Descargas». Busca accesos directos del menú Inicio y el escritorio, aplicaciones que Windows registra en Inicio y carpetas del perfil de usuario y OneDrive. La búsqueda de carpetas se limita a cinco niveles de profundidad. Si hay nombres parecidos o carpetas duplicadas, pregunta cuál abrir. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
 
+## Memoria personal y privacidad
+
+Mateo solo guarda datos cuando se lo pides explícitamente con «recuerda que…». La memoria se guarda en `datos/memoria_mateo.json` en este equipo, no se sube a GitHub y solo se añade como contexto al modelo local cuando está activada. No guardes contraseñas, tokens ni claves de API.
+
+- «¿Qué recuerdas de mí?» muestra los datos guardados.
+- «Olvida que…» elimina un dato concreto.
+- «Desactiva la memoria» conserva las notas, pero deja de usarlas y añadir nuevas.
+- «Activa la memoria» vuelve a usar las notas existentes y permite guardar otras a petición.
+- «Borra mi memoria» pide confirmación y elimina todos los datos guardados.
+
+También puedes revisar o borrar el archivo local `datos/memoria_mateo.json` manualmente.
+
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
 ## Preparación en Windows

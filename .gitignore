@@ -26,3 +26,6 @@ Thumbs.db
 
 # Modelos locales de reconocimiento de voz
 modelos/
+
+# Memoria personal local de Mateo
+datos/
