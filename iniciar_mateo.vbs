@@ -5,7 +5,7 @@ Set shell = CreateObject("WScript.Shell")
 Set files = CreateObject("Scripting.FileSystemObject")
 
 projectFolder = files.GetParentFolderName(WScript.ScriptFullName)
-scriptPath = files.BuildPath(projectFolder, "interfaz_mateo.py")
+scriptPath = files.BuildPath(projectFolder, "widget_mateo.py")
 pythonPath = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") & _
     "\Programs\Python\Python313\python.exe"
 
