@@ -7,7 +7,7 @@ Proyecto en Python con dos motores de conversación:
 
 ## Cómo funciona la versión local
 
-Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, faster-whisper transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
+Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. También puedes cerrar directamente el asistente diciendo **«Mateo, ya no te necesito»** o **«Mateo, apágate»**; Mateo se despedirá y cerrará el widget. Durante una conversación, otras despedidas como **«hasta luego»**, **«me voy»** o **«eso es todo»** terminan el turno y Mateo vuelve a esperar la frase de activación.
 
 Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, o una carpeta con frases como «abre Teams», «ábreme la carpeta Fotos» o «enséñame Descargas». Busca accesos directos del menú Inicio y el escritorio, aplicaciones que Windows registra en Inicio y carpetas del perfil de usuario y OneDrive. La búsqueda de carpetas se limita a cinco niveles de profundidad. Si hay nombres parecidos o carpetas duplicadas, pregunta cuál abrir. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
 
@@ -55,7 +55,7 @@ wscript.exe .\iniciar_mateo.vbs
 
 ## Inicio automático
 
-`widget_mateo.py` muestra una cápsula flotante arriba de la pantalla con el icono y estado de Mateo. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. El instalador configura el inicio automático al iniciar sesión en Windows; para configurarlo manualmente puedes ejecutar:
+`widget_mateo.py` muestra arriba de la pantalla una mascota flotante con estados animados para escuchar, pensar y hablar. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. El instalador configura el inicio automático al iniciar sesión en Windows; para configurarlo manualmente puedes ejecutar:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1

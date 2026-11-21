@@ -31,7 +31,13 @@ MEMORY_PATH = Path(__file__).parent / "datos" / "memoria_mateo.json"
 WIDGET_STATE_PATH = Path(__file__).parent / "datos" / "estado_widget.json"
 MAX_MEMORY_FACTS = 50
 MAX_MEMORY_FACT_LENGTH = 300
-WAKE_PHRASES = ("oye mateo", "illo mateo", "y yo mateo")
+WAKE_PHRASES = (
+    "oye mateo",
+    "illo mateo",
+    "y yo mateo",
+    "mateo ya no te necesito",
+    "mateo apagate",
+)
 WAKE_GRAMMAR = json.dumps([*WAKE_PHRASES, "[unk]"], ensure_ascii=False)
 END_PHRASES = (
     "adios",
@@ -49,6 +55,17 @@ END_PHRASES = (
     "quiero terminar",
     "hemos terminado",
     "terminamos",
+    "apagate",
+    "apaga mateo",
+    "cierra el widget",
+    "cierra mateo",
+)
+WIDGET_SHUTDOWN_PHRASES = (
+    "ya no te necesito",
+    "apagate",
+    "apaga mateo",
+    "cierra el widget",
+    "cierra mateo",
 )
 OPEN_ACTIONS = (
     "abre", "abreme", "abres", "abra", "abras", "habra", "habras",
@@ -173,6 +190,12 @@ def is_farewell(text: str) -> bool:
     """Detecta despedidas habituales sin exigir una frase exacta."""
     normalized = f" {normalize_text(text)} "
     return any(f" {phrase} " in normalized for phrase in END_PHRASES)
+
+
+def is_widget_shutdown(text: str) -> bool:
+    """Identifica despedidas que deben cerrar también el widget flotante."""
+    normalized = f" {normalize_text(text)} "
+    return any(f" {phrase} " in normalized for phrase in WIDGET_SHUTDOWN_PHRASES)
 
 
 def load_memory() -> dict[str, object]:
@@ -713,8 +736,8 @@ def capture_text(
         audio.terminate()
 
 
-def wait_for_wake_word(model: Model) -> None:
-    """Espera localmente una de las frases de activación."""
+def wait_for_wake_word(model: Model) -> str:
+    """Espera una activación o una orden directa para cerrar Mateo."""
     print('Esperando "Oye, Mateo" o "Illo, Mateo"...')
     while True:
         text = capture_text(model, WAKE_GRAMMAR)
@@ -722,7 +745,7 @@ def wait_for_wake_word(model: Model) -> None:
         print(f"Te oigo decir: {text}")
         if any(phrase in normalized for phrase in WAKE_PHRASES):
             print("Activación detectada. Mateo te escucha.")
-            return
+            return normalized
 
 
 def speak(voice: PiperVoice, text: str) -> None:
@@ -848,6 +871,8 @@ def converse(
             farewell = "De acuerdo. Cuando me necesites, di Oye, Mateo."
             print(f"Mateo: {farewell}")
             speak(voice, farewell)
+            if is_widget_shutdown(user_text):
+                print("MATEO_WIDGET_CLOSE", flush=True)
             return
 
         requested_memory_action = memory_command(user_text)
@@ -1062,7 +1087,13 @@ def main() -> None:
 
     try:
         while True:
-            wait_for_wake_word(speech_model)
+            wake_phrase = wait_for_wake_word(speech_model)
+            if is_widget_shutdown(wake_phrase):
+                farewell = "De acuerdo, señor Pablo. Hasta cuando me necesite."
+                print(f"Mateo: {farewell}")
+                speak(voice, farewell)
+                print("MATEO_WIDGET_CLOSE", flush=True)
+                return
             converse(speech_model, voice, local_ai, transcriber)
     except KeyboardInterrupt:
         print("\nAsistente cerrado.")

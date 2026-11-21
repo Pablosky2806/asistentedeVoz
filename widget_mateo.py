@@ -16,11 +16,11 @@ ASSISTANT_SCRIPT = BASE_DIR / "asistente_local.py"
 DATA_DIR = BASE_DIR / "datos"
 MEMORY_PATH = DATA_DIR / "memoria_mateo.json"
 WIDGET_STATE_PATH = DATA_DIR / "estado_widget.json"
-BACKGROUND = "#17131f"
-PANEL = "#211b2b"
-TEXT = "#f7f2ff"
-MUTED = "#b9adca"
-PURPLE = "#bb8aff"
+BACKGROUND = "#111316"
+PANEL = "#1a1d21"
+TEXT = "#f4f6f8"
+MUTED = "#a1a8b0"
+PURPLE = "#8a73ff"
 
 
 class MateoWidget:
@@ -57,7 +57,7 @@ class MateoWidget:
         style.map("Mateo.TButton", background=[("active", "#513d6b")])
 
         self.shell = tk.Frame(
-            self.root, bg=BACKGROUND, highlightthickness=1, highlightbackground="#4a3c5a"
+            self.root, bg=BACKGROUND, highlightthickness=1, highlightbackground="#2a2e34"
         )
         self.shell.pack(fill="both", expand=True)
         self.header = tk.Frame(self.shell, bg=BACKGROUND)
@@ -65,11 +65,18 @@ class MateoWidget:
         self.header.bind("<ButtonPress-1>", self._start_drag)
         self.header.bind("<B1-Motion>", self._drag)
 
-        self.icon = tk.Canvas(self.header, width=42, height=42, bg=BACKGROUND, highlightthickness=0)
-        self.icon.pack(side="left", padx=(2, 7))
-        self.icon.create_oval(4, 4, 38, 38, fill="#563878", outline="")
-        self.icon.create_oval(8, 8, 34, 34, fill=PURPLE, outline="")
-        self.icon.create_text(21, 21, text="M", fill="#30213e", font=("Segoe UI", 16, "bold"))
+        self.icon = tk.Canvas(self.header, width=70, height=46, bg=BACKGROUND, highlightthickness=0)
+        self.icon.pack(side="left", padx=(1, 8))
+        self.face_outline = self.icon.create_oval(3, 3, 67, 43, fill="#30353c", outline="")
+        self.icon.create_oval(5, 5, 39, 41, fill="#f3f4f6", outline="")
+        self.icon.create_oval(31, 5, 65, 41, fill="#f3f4f6", outline="")
+        self.icon.create_rectangle(22, 5, 48, 41, fill="#f3f4f6", outline="")
+        self.eye_left = self.icon.create_oval(21, 19, 29, 27, fill="#211c20", outline="")
+        self.eye_right = self.icon.create_oval(41, 19, 49, 27, fill="#211c20", outline="")
+        self.mouth = self.icon.create_arc(
+            29, 25, 41, 34, start=200, extent=140, style="arc", outline="#4b4146", width=2
+        )
+        self.pet_status = self.icon.create_oval(56, 32, 68, 44, fill="#f5a623", outline=BACKGROUND, width=2)
 
         labels = tk.Frame(self.header, bg=BACKGROUND)
         labels.pack(side="left", fill="x", expand=True)
@@ -285,9 +292,9 @@ class MateoWidget:
 
     def _position_widget(self) -> None:
         self.root.update_idletasks()
-        width = 250
+        width = 300
         x = max(0, (self.root.winfo_screenwidth() - width) // 2)
-        self.root.geometry(f"{width}x58+{x}+12")
+        self.root.geometry(f"{width}x62+{x}+12")
 
     def _start_drag(self, event: tk.Event) -> None:
         self.drag_offset = (event.x_root - self.root.winfo_x(), event.y_root - self.root.winfo_y())
@@ -304,13 +311,13 @@ class MateoWidget:
         self.expanded = True
         self.details.pack(fill="both", expand=True, padx=1, pady=(0, 1))
         self.expand_button.configure(text="⌃")
-        self.root.geometry(f"390x355+{self.root.winfo_x()}+{self.root.winfo_y()}")
+        self.root.geometry(f"410x355+{self.root.winfo_x()}+{self.root.winfo_y()}")
 
     def _collapse(self) -> None:
         self.expanded = False
         self.details.pack_forget()
         self.expand_button.configure(text="⌄")
-        self.root.geometry(f"250x58+{self.root.winfo_x()}+{self.root.winfo_y()}")
+        self.root.geometry(f"300x62+{self.root.winfo_x()}+{self.root.winfo_y()}")
 
     def _set_state(self, state: str, hint: str | None = None) -> None:
         self.state = state
@@ -323,6 +330,9 @@ class MateoWidget:
         self.transcript.configure(state="disabled")
 
     def _handle_output_line(self, line: str) -> None:
+        if line == "MATEO_WIDGET_CLOSE":
+            self.close()
+            return
         if "Mateo está listo" in line:
             if self.microphone_enabled:
                 self._set_state("En espera", 'Di «Oye, Mateo»')
@@ -347,6 +357,8 @@ class MateoWidget:
             self._set_state("Activo", "Te escucho")
         elif line == "Te escucho...":
             self._set_state("Escuchando", "Escuchando…")
+        elif line.startswith("Te oigo decir:"):
+            self._set_state("En espera", 'Di «Oye, Mateo» o «Mateo, apágate»')
         elif line.startswith("Tú:"):
             self._add_transcript("Tú", line.partition(":")[2].strip())
             self._set_state("Pensando", "Pensando…")
@@ -427,9 +439,26 @@ class MateoWidget:
 
     def _animate_icon(self) -> None:
         self.animation_step = (self.animation_step + 1) % 40
-        bright = self.state in {"Escuchando", "Activo", "Hablando"}
-        color = "#d5baff" if bright and self.animation_step < 20 else PURPLE
-        self.icon.itemconfigure(2, fill=color)
+        active = self.state in {"Escuchando", "Activo", "Hablando"}
+        color_by_state = {
+            "En espera": "#22c55e",
+            "Pausado": "#8a9099",
+            "Preparando": "#f5a623",
+            "Iniciando": "#f5a623",
+            "Escuchando": "#22c55e",
+            "Activo": "#22c55e",
+            "Pensando": "#8a73ff",
+            "Hablando": "#34b8e8",
+            "Error": "#f04452",
+            "Detenido": "#8a9099",
+        }
+        status_color = color_by_state.get(self.state, PURPLE)
+        eye_color = status_color if active and self.animation_step < 20 else "#211c20"
+        self.icon.itemconfigure(self.eye_left, fill=eye_color)
+        self.icon.itemconfigure(self.eye_right, fill=eye_color)
+        self.icon.itemconfigure(self.pet_status, fill=status_color)
+        self.icon.itemconfigure(self.face_outline, fill="#444957" if active and self.animation_step < 20 else "#30353c")
+        self.icon.itemconfigure(self.mouth, outline="#8a73ff" if self.state == "Hablando" else "#4b4146")
         self.root.after(120, self._animate_icon)
 
     def close(self) -> None:
