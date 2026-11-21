@@ -14,7 +14,8 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 
 
 SAMPLE_RATE = 16_000
-WAKE_PHRASES = ("oye mateo", "illo mateo")
+WAKE_PHRASES = ("oye mateo", "illo mateo", "y yo mateo")
+WAKE_GRAMMAR = json.dumps([*WAKE_PHRASES, "[unk]"], ensure_ascii=False)
 MODEL_PATH = Path(__file__).parent / "modelos" / "vosk-model-small-es-0.42"
 
 
@@ -33,7 +34,7 @@ def normalize_text(text: str) -> str:
 
 def wait_for_wake_word(model: Model) -> None:
     """Escucha el micrófono localmente hasta reconocer una frase de activación."""
-    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+    recognizer = KaldiRecognizer(model, SAMPLE_RATE, WAKE_GRAMMAR)
     audio = pyaudio.PyAudio()
     stream = None
 
