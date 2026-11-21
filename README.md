@@ -2,14 +2,14 @@
 
 Proyecto en Python con dos motores de conversación:
 
-- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper con la voz `es_ES-sharvard-medium` para hablar en español, sin emojis ni emoticonos.
+- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper con la voz `es_ES-sharvard-medium` para hablar en español, sin emojis ni emoticonos. Mateo usa un trato cortés y pausado, inspirado en un mayordomo.
 - `asistente.py`: versión anterior conectada a ElevenLabs; requiere una clave API y consume la cuota de esa cuenta.
 
 ## Cómo funciona la versión local
 
 Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, faster-whisper transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
 
-Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams», «me abres WhatsApp» o «inicia Disney Plus». Whisper recibe sugerencias con nombres de aplicaciones y juegos instalados. Mateo busca accesos directos del menú Inicio y del escritorio; si confunde Steam con Teams, te pedirá que confirmes antes de abrirlo. La búsqueda de carpetas se ampliará en una fase posterior.
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams», «me abres WhatsApp» o «inicia Disney Plus». Whisper recibe sugerencias con nombres de aplicaciones y juegos instalados. Mateo busca accesos directos del menú Inicio y del escritorio; si confunde Steam con Teams, te pedirá que confirmes antes de abrirlo. Si no encuentra un acceso directo de Disney+, WhatsApp o Teams, intentará abrir el servicio en el navegador y no afirmará que está desinstalado. La búsqueda de carpetas se ampliará en una fase posterior.
 
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 

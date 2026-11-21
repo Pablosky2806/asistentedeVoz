@@ -13,7 +13,7 @@ import ollama
 import pyaudio
 import numpy as np
 from faster_whisper import WhisperModel
-from piper import PiperVoice
+from piper import PiperVoice, SynthesisConfig
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
 
@@ -43,7 +43,8 @@ END_PHRASES = (
     "terminamos",
 )
 OPEN_ACTIONS = (
-    "abre", "abreme", "abres", "abra", "abras", "abrir", "abrirme", "abrirlo", "abrirla",
+    "abre", "abreme", "abres", "abra", "abras", "habra", "habras",
+    "abrir", "abrirme", "abrirlo", "abrirla",
     "inicia", "iniciar",
     "lanza", "ejecuta", "arranca", "arrancar",
 )
@@ -64,14 +65,29 @@ ASR_NAME_ALIASES = {
     "wasap": "whatsapp",
     "watsap": "whatsapp",
     "wats app": "whatsapp",
+    "disney plas": "disney plus",
+    "disni plus": "disney plus",
+    "disneyplus": "disney plus",
 }
 
-SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
-Responde de forma natural, cercana y breve, normalmente en una o tres frases.
+WEB_APP_TARGETS = {
+    "disney": ("Disney+", "https://www.disneyplus.com"),
+    "disney plus": ("Disney+", "https://www.disneyplus.com"),
+    "whatsapp": ("WhatsApp Web", "https://web.whatsapp.com"),
+    "teams": ("Microsoft Teams", "https://teams.microsoft.com"),
+    "microsoft teams": ("Microsoft Teams", "https://teams.microsoft.com"),
+}
+
+SYSTEM_PROMPT = """Eres Mateo, el mayordomo personal de Pablo. Hablas en español de España
+con cortesía, serenidad, discreción y un punto de elegancia, como un mayordomo
+atento y natural, nunca teatral. Puedes dirigirte a él como "señor Pablo" de vez
+en cuando, sin repetirlo en cada respuesta. Responde con claridad y brevedad,
+normalmente en una o tres frases.
 No uses emojis ni emoticonos en ninguna respuesta.
 Recuerda el contexto de esta conversación mientras siga abierta. No inventes
 datos; si no sabes algo, dilo con claridad. No des consejos médicos, legales
-ni financieros profesionales."""
+ni financieros profesionales. No afirmes que una aplicación está desinstalada
+si no puedes comprobarlo; si no encuentras su acceso directo, dilo claramente."""
 
 
 def normalize_text(text: str) -> str:
@@ -212,7 +228,15 @@ def open_requested_target(query: str, allow_similar_names: bool = False) -> tupl
         reverse=True,
     )
     if not ranked or ranked[0][0] < 0.82:
-        return "missing", f"No encuentro una aplicación o juego llamado {query}."
+        web_target = WEB_APP_TARGETS.get(normalized_query)
+        if web_target:
+            display_name, url = web_target
+            try:
+                os.startfile(url)
+            except OSError:
+                return "error", f"No he podido abrir {display_name} en el navegador."
+            return "opened", f"No encuentro un acceso directo local; abriré {display_name} en el navegador."
+        return "missing", f"No encuentro un acceso directo de {query}; no puedo confirmar si está instalada."
 
     best_score, best_name, best_path = ranked[0]
     if (
@@ -305,7 +329,11 @@ def speak(voice: PiperVoice, text: str) -> None:
     """Genera y reproduce audio localmente con Piper."""
     audio_buffer = io.BytesIO()
     with wave.open(audio_buffer, "wb") as wav_file:
-        voice.synthesize_wav(text, wav_file)
+        voice.synthesize_wav(
+            text,
+            wav_file,
+            syn_config=SynthesisConfig(speaker_id=0, length_scale=1.10),
+        )
     audio_buffer.seek(0)
 
     audio = pyaudio.PyAudio()
