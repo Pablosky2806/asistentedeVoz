@@ -47,6 +47,7 @@ def wait_for_wake_word(model: Model) -> None:
         )
         stream.start_stream()
         print('Esperando "Oye, Mateo" o "Illo, Mateo"...')
+        last_displayed_text = ""
 
         while True:
             audio_chunk = stream.read(4_000, exception_on_overflow=False)
@@ -58,6 +59,10 @@ def wait_for_wake_word(model: Model) -> None:
                 recognized_text = result.get("partial", "")
 
             normalized = normalize_text(recognized_text)
+            if normalized and normalized != last_displayed_text:
+                print(f"Te oigo decir: {recognized_text}")
+            last_displayed_text = normalized
+
             if any(phrase in normalized for phrase in WAKE_PHRASES):
                 print("Activación detectada. Conectando con Mateo...")
                 return
