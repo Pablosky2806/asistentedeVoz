@@ -1,16 +1,19 @@
-# Asistente de voz con ElevenLabs
+# Mateo: asistente de voz para Windows
 
-Proyecto en Python para mantener conversaciones por voz con Mateo, un agente de ElevenLabs.
+Proyecto en Python con dos motores de conversación:
 
-## Cómo funciona
+- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para reconocer voz, Ollama con `qwen3:8b` para responder y Piper para hablar en español.
+- `asistente.py`: versión anterior conectada a ElevenLabs; requiere una clave API y consume la cuota de esa cuenta.
 
-Vosk escucha el micrófono localmente y espera una de estas frases: **«Oye, Mateo»** o **«Illo, Mateo»**. Cuando detecta una, inicia una conversación de voz con ElevenLabs. Al terminar la conversación, vuelve a esperar la frase. Pulsa `Ctrl+C` para cerrar el programa.
+## Cómo funciona la versión local
 
-El audio de espera se procesa en el equipo con el modelo español de Vosk. ElevenLabs recibe audio cuando comienza la conversación con Mateo.
+Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Di **«Adiós, Mateo»** o **«Terminar conversación»** para volver a esperar la frase de activación.
+
+Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
 ## Preparación en Windows
 
-Se recomienda Python 3.13 en Windows para instalar PyAudio sin compilarlo manualmente.
+Se recomienda Python 3.13 para usar PyAudio en Windows.
 
 1. Crea y activa un entorno virtual:
 
@@ -25,53 +28,47 @@ Se recomienda Python 3.13 en Windows para instalar PyAudio sin compilarlo manual
    python -m pip install -r requirements.txt
    ```
 
-3. Descarga el modelo pequeño de español desde [Vosk Models](https://alphacephei.com/vosk/models) (`vosk-model-small-es-0.42`, aproximadamente 39 MB). Extrae la carpeta dentro de `modelos`, de forma que quede así:
+3. Descarga el modelo pequeño de español de [Vosk](https://alphacephei.com/vosk/models) (`vosk-model-small-es-0.42`, unos 39 MB). Extrae la carpeta en `modelos`, para que exista `modelos/vosk-model-small-es-0.42/conf`.
 
-   ```text
-   modelos/vosk-model-small-es-0.42/am
-   modelos/vosk-model-small-es-0.42/conf
-   modelos/vosk-model-small-es-0.42/graph
-   modelos/vosk-model-small-es-0.42/ivector
+4. Instala [Ollama para Windows](https://ollama.com/download/windows). Luego abre PowerShell y descarga el modelo local de 8B:
+
+   ```powershell
+   ollama run qwen3:8b
    ```
 
-   La carpeta `modelos/` se mantiene en el ordenador y está excluida de Git.
+   La descarga ocupa unos 5,2 GB. Cuando aparezca el indicador de conversación de Ollama, escribe `/bye` para salir. El modelo permanece en el equipo y Ollama atiende las solicitudes locales.
 
-4. Configura `.env` con el ID de tu agente y la clave API:
+5. Descarga la voz española de Piper dentro de `modelos/piper`:
 
-   ```env
-   AGENT_ID=tu-agent-id
-   ELEVENLABS_API_KEY=tu-clave-api
+   ```powershell
+   New-Item -ItemType Directory -Force modelos\piper
+   py -3.13 -m piper.download_voices es_ES-davefx-medium --data-dir modelos\piper
    ```
 
-   No subas `.env` ni compartas la clave API. Para agentes que requieren autenticación, la clave debe tener permiso de escritura de ElevenAgents para obtener la URL firmada de la conversación.
+La carpeta `modelos/` está excluida de Git para no subir archivos grandes.
 
-## Ejecutar
+## Ejecutar Mateo sin créditos de API
 
-Desde la carpeta del proyecto, con el entorno virtual activado:
-
-```powershell
-python asistente.py
-```
-
-Sin activar el entorno virtual, también puedes ejecutar:
+Desde la carpeta del proyecto:
 
 ```powershell
-py -3.13 asistente.py
+py -3.13 asistente_local.py
 ```
 
-## Inicio automático de Windows
+Pulsa `Ctrl+C` para salir. La velocidad de respuesta depende del procesador y del modelo local. Ollama y Piper usan los modelos descargados en el portátil.
 
-`iniciar_mateo.vbs` inicia el asistente sin mostrar una ventana de PowerShell. `detener_mateo.vbs` cierra el proceso de Mateo.
+## Inicio automático
 
-Para iniciar Mateo al iniciar sesión en Windows, crea un acceso directo a `iniciar_mateo.vbs` dentro de la carpeta de inicio del usuario. Abre esa carpeta con `Windows + R`, escribe `shell:startup` y pulsa Enter. Para desactivar el inicio automático, quita ese acceso directo. No inicies Mateo más de una vez a la vez.
+`iniciar_mateo.vbs` y `detener_mateo.vbs` se configurarán para la versión local después de completar y probar su instalación. Para usar la versión local mientras tanto, ejecútala con el comando anterior.
 
 ## Seguimiento del proyecto
 
 - `main`: base estable.
-- `feature/elevenagents-architecture`: arquitectura y configuración inicial.
+- `feature/elevenagents-architecture`: arquitectura de ElevenAgents.
 - `feature/voice-session`: primera sesión de conversación.
-- `feature/agent-config`: validación de la configuración local.
-- `feature/agent-setup-script`: creación de un agente mediante la API.
+- `feature/agent-config`: validación de configuración.
+- `feature/agent-setup-script`: creación de agente mediante la API.
 - `feature/wake-word`: activación local por frase con Vosk.
+- `feature/local-ai`: conversación local con Vosk, Ollama y Piper.
 
-Los avances se registran en commits pequeños, explicados por fase.
+Los cambios se registran en commits pequeños por fase.

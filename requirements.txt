@@ -1,3 +1,5 @@
 ﻿elevenlabs[pyaudio]
 python-dotenv
 vosk
+ollama
+piper-tts
