@@ -9,7 +9,7 @@ Proyecto en Python con dos motores de conversación:
 
 Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. También puedes cerrar directamente el asistente diciendo **«Mateo, ya no te necesito»** o **«Mateo, apágate»**; Mateo se despedirá y cerrará el widget. Durante una conversación, otras despedidas como **«hasta luego»**, **«me voy»** o **«eso es todo»** terminan el turno y Mateo vuelve a esperar la frase de activación.
 
-Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, o una carpeta con frases como «abre Teams», «ábreme la carpeta Fotos» o «enséñame Descargas». Busca accesos directos del menú Inicio y el escritorio, aplicaciones que Windows registra en Inicio y carpetas del perfil de usuario y OneDrive. La búsqueda de carpetas se limita a cinco niveles de profundidad. Si hay nombres parecidos o carpetas duplicadas, pregunta cuál abrir. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, una carpeta o un archivo. Por ejemplo: «abre Teams», «ábreme la carpeta Pragmata que está en el escritorio» o «busca el archivo presupuesto en Documentos». Busca accesos directos del menú Inicio y el escritorio, carpetas del perfil de usuario y OneDrive, y nombres de archivos en Escritorio, Documentos y Descargas, hasta cinco niveles de profundidad. Si hay coincidencias parecidas, te pregunta antes de abrirlas y usa la ubicación indicada para elegir mejor. Para Disney+, WhatsApp y Teams puede abrir la versión web si no encuentra una aplicación local.
 
 ## Memoria personal y privacidad
 
@@ -23,7 +23,7 @@ Mateo solo guarda datos cuando se lo pides explícitamente con «recuerda que…
 
 También puedes revisar o borrar el archivo local `datos/memoria_mateo.json` manualmente.
 
-Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual. La memoria persistente opcional se guarda localmente y puedes controlarla desde el widget.
+Los modelos se descargan una vez y quedan guardados localmente. La transcripción usa detección de actividad de voz para reducir falsos reconocimientos del silencio y descarta bucles como «run, run, run». La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual. La memoria persistente opcional se guarda localmente y puedes controlarla desde el widget.
 
 ## Instalación sencilla en Windows
 

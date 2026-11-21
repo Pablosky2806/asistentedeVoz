@@ -72,10 +72,11 @@ OPEN_ACTIONS = (
     "abrir", "abrirme", "abrirlo", "abrirla",
     "inicia", "iniciar",
     "lanza", "ejecuta", "arranca", "arrancar", "enciende", "poner", "pon", "ponme",
-    "llevame a", "lleva a", "ve a", "muestrame", "ensename", "busca",
+    "llevame a", "lleva a", "ve a", "muestrame", "ensename", "buscar", "buscame", "busqueme", "encuentrame", "busca",
 )
 LAUNCH_TARGETS: list[tuple[str, Path]] | None = None
 FOLDER_TARGETS: list[tuple[str, Path]] | None = None
+FILE_TARGETS: list[tuple[str, Path]] | None = None
 SPEECH_APP_HINTS = (
     "Microsoft Teams", "Teams", "Steam", "WhatsApp", "Disney Plus", "Discord",
     "Spotify", "Cursor", "Chrome", "Edge",
@@ -114,7 +115,11 @@ No uses emojis ni emoticonos en ninguna respuesta.
 Recuerda el contexto de esta conversación mientras siga abierta. No inventes
 datos; si no sabes algo, dilo con claridad. No des consejos médicos, legales
 ni financieros profesionales. No afirmes que una aplicación está desinstalada
-si no puedes comprobarlo; si no encuentras su acceso directo, dilo claramente."""
+si no puedes comprobarlo; si no encuentras su acceso directo, dilo claramente.
+Responde directamente a preguntas generales sobre cultura, series, anime, historia
+y tecnología con lo que sabes. No digas que no puedes ejecutar código o acceder a
+archivos si la pregunta no trata de ejecutar código o abrir archivos. No repitas
+palabras ni frases; si no entiendes la pregunta, pide que la repitan brevemente."""
 
 MEMORY_SECRET_PATTERN = re.compile(
     r"\b(?:contrase(?:ña|na)|password|api[\s_-]?key|claves?|token|pin|iban|"
@@ -196,6 +201,14 @@ def is_widget_shutdown(text: str) -> bool:
     """Identifica despedidas que deben cerrar también el widget flotante."""
     normalized = f" {normalize_text(text)} "
     return any(f" {phrase} " in normalized for phrase in WIDGET_SHUTDOWN_PHRASES)
+
+
+def clean_asr_transcript(text: str) -> str:
+    """Descarta el bucle de una sola palabra y quita el eco repetido de 'run'."""
+    words = normalize_text(text).split()
+    if len(words) >= 3 and len(set(words)) == 1:
+        return ""
+    return re.sub(r"^\s*(?:run[\s,.;:-]+){3}", "", text, flags=re.IGNORECASE).strip(" ,.;:-")
 
 
 def load_memory() -> dict[str, object]:
@@ -293,13 +306,29 @@ def requested_target(text: str) -> str | None:
     if folder_match:
         target = folder_match.group(1)
     target = re.sub(
-        r"^(?:(?:por favor|porfa|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|directorio|carpeta|llamada|llamado|que se llama|mis|mi|del|de|el|la|los|las|un|una|me|puedes|puede) )+",
+        r"^(?:(?:por favor|porfa|la aplicacion|la app|el programa|el juego|el archivo|la archivo|archivo|fichero|documento|el documento|la carpeta|carpeta de|directorio|carpeta|llamada|llamado|que se llama|mis|mi|del|de|el|la|los|las|un|una|me|puedes|puede) )+",
         "",
         target,
     )
     target = re.sub(r"\s+(?:por favor|porfa|gracias)$", "", target).strip()
-    target = re.sub(r"\s+(?:que esta en|que esta dentro de|dentro de|en) (?:el )?(?:escritorio|desktop|documentos|descargas)$", "", target).strip()
+    target = re.sub(r"\s+(?:que esta en|que esta dentro de|dentro de|en|del) (?:el )?(?:escritorio|desktop|documentos|documents|descargas|downloads)$", "", target).strip()
     return target
+
+
+def requested_location(text: str) -> str:
+    """Obtiene una ubicación concreta mencionada al pedir un archivo o carpeta."""
+    normalized = normalize_text(text)
+    match = re.search(
+        r"\b(?:que esta en|que esta dentro de|dentro de|en|del)\s+(?:el\s+)?"
+        r"(escritorio|desktop|documentos|documents|descargas|downloads)\b",
+        normalized,
+    )
+    return match.group(1) if match else ""
+
+
+def requested_file(text: str) -> bool:
+    """Indica si se pidió explícitamente un archivo o documento."""
+    return bool(re.search(r"\b(?:archivo|fichero|documento)\b", normalize_text(text)))
 
 
 def get_launch_targets() -> list[tuple[str, Path]]:
@@ -435,11 +464,78 @@ def get_folder_targets() -> list[tuple[str, Path]]:
     return FOLDER_TARGETS
 
 
+def get_file_targets() -> list[tuple[str, Path]]:
+    """Indexa nombres de archivos del Escritorio, Documentos y Descargas."""
+    global FILE_TARGETS
+    if FILE_TARGETS is not None:
+        return FILE_TARGETS
+
+    home = Path.home()
+    roots = {
+        home / name
+        for name in ("Desktop", "Escritorio", "Documents", "Documentos", "Downloads", "Descargas")
+    }
+    if os.environ.get("OneDrive"):
+        one_drive = Path(os.environ["OneDrive"])
+        roots.update(
+            one_drive / name
+            for name in ("Desktop", "Escritorio", "Documents", "Documentos", "Downloads", "Descargas")
+        )
+    excluded = {"appdata", "windows", "program files", "program files (x86)", "node_modules", ".git", ".venv"}
+    targets: list[tuple[str, Path]] = []
+    seen: set[str] = set()
+    for root in (path for path in roots if path and path.is_dir()):
+        try:
+            for current, directories, files in os.walk(root):
+                current_path = Path(current)
+                depth = len(current_path.relative_to(root).parts)
+                directories[:] = [
+                    name for name in directories
+                    if not name.startswith(".") and name.casefold() not in excluded
+                ]
+                if depth >= 5:
+                    directories.clear()
+                for filename in files:
+                    path = current_path / filename
+                    identity = str(path).casefold()
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    targets.append((normalize_text(path.stem), path))
+                    if len(targets) >= 20_000:
+                        FILE_TARGETS = targets
+                        return FILE_TARGETS
+        except (OSError, ValueError):
+            continue
+
+    FILE_TARGETS = targets
+    return FILE_TARGETS
+
+
+def filter_by_location(
+    candidates: list[tuple[str, Path]], location_hint: str
+) -> list[tuple[str, Path]]:
+    """Prioriza los resultados que están en la ubicación que indicó la persona."""
+    if not location_hint:
+        return candidates
+    aliases = {
+        "escritorio": "desktop", "desktop": "escritorio",
+        "documentos": "documents", "documents": "documentos",
+        "descargas": "downloads", "downloads": "descargas",
+    }
+    terms = {location_hint, aliases.get(location_hint, location_hint)}
+    return [
+        item for item in candidates
+        if any(term in normalize_text(str(item[1].parent)) for term in terms)
+    ]
+
+
 def open_requested_target(
     query: str,
     allow_similar_names: bool = False,
     folder_only: bool = False,
     location_hint: str = "",
+    file_only: bool = False,
 ) -> tuple[str, str]:
     """Abre el acceso directo de aplicación o juego que coincide con la petición."""
     if not query:
@@ -456,6 +552,41 @@ def open_requested_target(
         return "opened", "Abriendo la carpeta indicada."
 
     normalized_query = normalize_text(query)
+    if file_only:
+        file_candidates = filter_by_location(get_file_targets(), location_hint)
+        exact = [
+            item for item in file_candidates
+            if item[0] == normalized_query or normalize_text(item[1].name) == normalized_query
+        ]
+        ranked_files = exact or sorted(
+            (
+                (max(
+                    difflib.SequenceMatcher(None, normalized_query, name).ratio(),
+                    difflib.SequenceMatcher(None, normalized_query, normalize_text(path.name)).ratio(),
+                ), name, path)
+                for name, path in file_candidates
+            ),
+            reverse=True,
+        )
+        if exact:
+            ranked_files = [(1.0, name, path) for name, path in exact]
+        if not ranked_files or (not exact and ranked_files[0][0] < 0.72):
+            location = f" en {location_hint}" if location_hint else ""
+            return "missing", f"No encuentro un archivo llamado {query}{location}."
+        if len(ranked_files) > 1 and ranked_files[0][0] - ranked_files[1][0] < 0.08:
+            options = " o ".join(
+                f"{item[2].name} en {item[2].parent.name}" for item in ranked_files[:2]
+            )
+            return "ambiguous", f"He encontrado archivos parecidos: {options}. Dime el nombre completo."
+        _score, _name, file_path = ranked_files[0]
+        if not exact and ranked_files[0][0] < 0.90:
+            return "confirm", f"He entendido que buscas el archivo {file_path.name}. ¿Es correcto?"
+        try:
+            launch_target(file_path)
+        except OSError:
+            return "error", f"He encontrado {file_path.name}, pero Windows no pudo abrirlo."
+        return "opened", f"Abriendo el archivo {file_path.name}."
+
     known_folders = {
         "escritorio": {"desktop", "escritorio"},
         "descargas": {"downloads", "descargas"},
@@ -469,32 +600,13 @@ def open_requested_target(
     }
 
     if folder_only:
-        folder_candidates = get_folder_targets()
-        exact_folder = next(
-            ((name, path) for name, path in folder_candidates if name in folder_names),
-            None,
-        )
+        folder_candidates = filter_by_location(get_folder_targets(), location_hint)
+        if location_hint and not folder_candidates:
+            return "missing", f"No encuentro una carpeta llamada {query} en {location_hint}."
         matching_folders = [
             (name, path) for name, path in folder_candidates if name in folder_names
         ]
-        if location_hint:
-            hint = re.sub(
-                r"^(?:(?:la carpeta de|la|el|de|del|en) )+",
-                "",
-                normalize_text(location_hint),
-            )
-            location_aliases = {
-                "escritorio": "desktop", "desktop": "escritorio",
-                "documentos": "documents", "documents": "documentos",
-                "descargas": "downloads", "downloads": "descargas",
-            }
-            hints = {hint, location_aliases.get(hint, hint)}
-            location_matches = [
-                item for item in matching_folders
-                if any(term in normalize_text(str(item[1].parent)) for term in hints)
-            ]
-            if location_matches:
-                matching_folders = location_matches
+        exact_folder = next((item for item in matching_folders if item[0] in folder_names), None)
         if len(matching_folders) > 1:
             locations = []
             for _name, path in matching_folders:
@@ -711,6 +823,12 @@ def capture_text(
                             task="transcribe",
                             beam_size=3,
                             condition_on_previous_text=False,
+                            vad_filter=True,
+                            vad_parameters={
+                                "min_silence_duration_ms": 500,
+                                "speech_pad_ms": 200,
+                            },
+                            no_speech_threshold=0.6,
                             hotwords=", ".join(
                                 [
                                     *SPEECH_APP_HINTS,
@@ -721,10 +839,12 @@ def capture_text(
                             ),
                         )
                         transcript = " ".join(segment.text.strip() for segment in segments).strip()
+                        transcript = clean_asr_transcript(transcript)
                         if transcript:
                             if not microphone_is_enabled():
                                 continue
                             return transcript
+                        print("No he detectado una frase clara; sigo escuchando.", flush=True)
                 elif text:
                     if not microphone_is_enabled():
                         continue
@@ -983,8 +1103,15 @@ def converse(
         if app_request is not None:
             command_words = set(normalize_text(user_text).split())
             folder_only = bool(command_words & {"carpeta", "directorio"})
+            file_only = requested_file(user_text)
+            location_hint = requested_location(user_text)
             print(f"Orden detectada: abrir {app_request}", flush=True)
-            result, reply = open_requested_target(app_request, folder_only=folder_only)
+            result, reply = open_requested_target(
+                app_request,
+                folder_only=folder_only,
+                location_hint=location_hint,
+                file_only=file_only,
+            )
             print(f"Mateo: {reply}")
             speak(voice, reply)
             if result in {"clarify", "ambiguous", "folder_ambiguous", "confirm"}:
@@ -1000,6 +1127,8 @@ def converse(
                         app_request,
                         allow_similar_names=True,
                         folder_only=folder_only,
+                        location_hint=location_hint,
+                        file_only=file_only,
                     )
                 elif result == "confirm" and negative:
                     reply = "De acuerdo, no abriré nada."
@@ -1008,7 +1137,8 @@ def converse(
                         app_request,
                         allow_similar_names=True,
                         folder_only=True,
-                        location_hint=choice_text,
+                        location_hint=choice_text or location_hint,
+                        file_only=file_only,
                     )
                 elif "microsoft" in choice or "teams" in choice or "tims" in choice:
                     result, reply = open_requested_target("teams", allow_similar_names=True)
@@ -1019,6 +1149,8 @@ def converse(
                         choice_text,
                         allow_similar_names=True,
                         folder_only=folder_only,
+                        location_hint=location_hint,
+                        file_only=file_only,
                     )
                 else:
                     reply = "De acuerdo, no abriré nada."
@@ -1031,7 +1163,13 @@ def converse(
             response = local_ai.chat(
                 model=OLLAMA_MODEL,
                 messages=messages,
-                options={"temperature": 0.7, "num_ctx": 4_096},
+                options={
+                    "temperature": 0.45,
+                    "num_ctx": 4_096,
+                    "num_predict": 180,
+                    "repeat_last_n": 96,
+                    "repeat_penalty": 1.15,
+                },
                 keep_alive="30m",
             )
         except Exception as error:
