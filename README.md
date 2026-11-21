@@ -2,7 +2,7 @@
 
 Proyecto en Python con dos motores de conversación:
 
-- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper para hablar en español.
+- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper con la voz `es_ES-sharvard-medium` para hablar en español, sin emojis ni emoticonos.
 - `asistente.py`: versión anterior conectada a ElevenLabs; requiere una clave API y consume la cuota de esa cuenta.
 
 ## Cómo funciona la versión local
@@ -40,11 +40,11 @@ Se recomienda Python 3.13 para usar PyAudio en Windows.
 
    La descarga ocupa unos 5,2 GB. Cuando aparezca el indicador de conversación de Ollama, escribe `/bye` para salir. El modelo permanece en el equipo y Ollama atiende las solicitudes locales.
 
-5. Descarga la voz española de Piper dentro de `modelos/piper`:
+5. Descarga la nueva voz española de Piper dentro de `modelos/piper`:
 
    ```powershell
    New-Item -ItemType Directory -Force modelos\piper
-   py -3.13 -m piper.download_voices es_ES-davefx-medium --data-dir modelos\piper
+   py -3.13 -m piper.download_voices es_ES-sharvard-medium --data-dir modelos\piper
    ```
 
 La carpeta `modelos/` está excluida de Git para no subir archivos grandes. En el primer arranque, faster-whisper descarga una vez su modelo de reconocimiento; después la transcripción funciona localmente.

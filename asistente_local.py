@@ -19,7 +19,7 @@ from vosk import KaldiRecognizer, Model, SetLogLevel
 
 SAMPLE_RATE = 16_000
 MODEL_PATH = Path(__file__).parent / "modelos" / "vosk-model-small-es-0.42"
-PIPER_VOICE_PATH = Path(__file__).parent / "modelos" / "piper" / "es_ES-davefx-medium.onnx"
+PIPER_VOICE_PATH = Path(__file__).parent / "modelos" / "piper" / "es_ES-sharvard-medium.onnx"
 OLLAMA_MODEL = "qwen3:8b"
 WHISPER_MODEL_SIZE = "small"
 WHISPER_MODEL_PATH = Path(__file__).parent / "modelos" / "whisper"
@@ -68,6 +68,7 @@ ASR_NAME_ALIASES = {
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
 Responde de forma natural, cercana y breve, normalmente en una o tres frases.
+No uses emojis ni emoticonos en ninguna respuesta.
 Recuerda el contexto de esta conversación mientras siga abierta. No inventes
 datos; si no sabes algo, dilo con claridad. No des consejos médicos, legales
 ni financieros profesionales."""
@@ -84,6 +85,26 @@ def normalize_text(text: str) -> str:
         character if character.isalnum() else " " for character in without_accents
     )
     return " ".join(cleaned.split())
+
+
+def remove_emojis(text: str) -> str:
+    """Quita emojis y emoticonos para que tampoco aparezcan en la salida."""
+    filtered = []
+    for character in text:
+        codepoint = ord(character)
+        category = unicodedata.category(character)
+        is_emoji_component = (
+            category in {"So", "Sk"}
+            or codepoint in {0x200D, 0xFE0E, 0xFE0F, 0x20E3}
+            or 0x1F3FB <= codepoint <= 0x1F3FF
+        )
+        if not is_emoji_component:
+            filtered.append(character)
+
+    cleaned = "".join(filtered)
+    cleaned = re.sub(r"(?i)(?<!\w)(?:[:;=8][-^']?[)(/\\DPp]|<3)(?!\w)", "", cleaned)
+    cleaned = re.sub(r"\s+([,.;!?])", r"\1", cleaned)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def is_farewell(text: str) -> bool:
@@ -365,6 +386,7 @@ def converse(
             return
 
         assistant_text = response.message.content.strip()
+        assistant_text = remove_emojis(assistant_text)
         if not assistant_text:
             assistant_text = "No he podido preparar una respuesta. ¿Puedes repetirlo?"
         print(f"Mateo: {assistant_text}")
