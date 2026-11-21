@@ -3,3 +3,4 @@ python-dotenv
 vosk
 ollama
 piper-tts
+faster-whisper

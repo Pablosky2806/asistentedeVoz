@@ -2,14 +2,14 @@
 
 Proyecto en Python con dos motores de conversación:
 
-- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para reconocer voz, Ollama con `qwen3:8b` para responder y Piper para hablar en español.
+- `asistente_local.py`: versión local para conversar sin consumir créditos de ElevenLabs. Usa Vosk para detectar la frase de activación, faster-whisper para transcribir con más precisión, Ollama con `qwen3:8b` para responder y Piper para hablar en español.
 - `asistente.py`: versión anterior conectada a ElevenLabs; requiere una clave API y consume la cuota de esa cuenta.
 
 ## Cómo funciona la versión local
 
-Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
+Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, faster-whisper transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
 
-Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams» o «abre Minecraft». Busca accesos directos del menú Inicio y del escritorio. También encuentra carpetas en el escritorio, Documentos, Descargas y OneDrive. Si hay varias coincidencias te preguntará cuál abrir. Mateo solo puede abrir elementos que Windows muestre mediante esos accesos o carpetas; no ejecuta órdenes arbitrarias dictadas por voz.
+Durante una conversación puedes pedirle que abra una aplicación o juego por su nombre, como «abre Teams», «me abres WhatsApp» o «inicia Disney Plus». Busca accesos directos del menú Inicio y del escritorio. Si hay varias coincidencias te preguntará cuál abrir. Mateo solo abre accesos directos instalados; la búsqueda de carpetas se documentará y ampliará en una fase posterior.
 
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
@@ -47,7 +47,7 @@ Se recomienda Python 3.13 para usar PyAudio en Windows.
    py -3.13 -m piper.download_voices es_ES-davefx-medium --data-dir modelos\piper
    ```
 
-La carpeta `modelos/` está excluida de Git para no subir archivos grandes.
+La carpeta `modelos/` está excluida de Git para no subir archivos grandes. En el primer arranque, faster-whisper descarga una vez su modelo de reconocimiento; después la transcripción funciona localmente.
 
 ## Ejecutar Mateo sin créditos de API
 

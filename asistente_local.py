@@ -11,6 +11,8 @@ from pathlib import Path
 
 import ollama
 import pyaudio
+import numpy as np
+from faster_whisper import WhisperModel
 from piper import PiperVoice
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
@@ -19,6 +21,8 @@ SAMPLE_RATE = 16_000
 MODEL_PATH = Path(__file__).parent / "modelos" / "vosk-model-small-es-0.42"
 PIPER_VOICE_PATH = Path(__file__).parent / "modelos" / "piper" / "es_ES-davefx-medium.onnx"
 OLLAMA_MODEL = "qwen3:8b"
+WHISPER_MODEL_SIZE = "small"
+WHISPER_MODEL_PATH = Path(__file__).parent / "modelos" / "whisper"
 WAKE_PHRASES = ("oye mateo", "illo mateo", "y yo mateo")
 WAKE_GRAMMAR = json.dumps([*WAKE_PHRASES, "[unk]"], ensure_ascii=False)
 END_PHRASES = (
@@ -38,7 +42,11 @@ END_PHRASES = (
     "hemos terminado",
     "terminamos",
 )
-OPEN_ACTIONS = ("abre", "abres", "abrir", "inicia", "iniciar", "lanza", "ejecuta")
+OPEN_ACTIONS = (
+    "abre", "abreme", "abres", "abra", "abras", "abrir", "abrirme", "abrirlo", "abrirla",
+    "inicia", "iniciar",
+    "lanza", "ejecuta", "arranca", "arrancar",
+)
 LAUNCH_TARGETS: list[tuple[str, Path]] | None = None
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
@@ -76,7 +84,7 @@ def requested_target(text: str) -> str | None:
         return None
     target = match.group(1)
     target = re.sub(
-        r"^(?:(?:por favor|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|de|el|la|los|las|un|una) )+",
+        r"^(?:(?:por favor|la aplicacion|la app|el programa|el juego|la carpeta|carpeta de|de|el|la|los|las|un|una|me) )+",
         "",
         target,
     )
@@ -85,7 +93,7 @@ def requested_target(text: str) -> str | None:
 
 
 def get_launch_targets() -> list[tuple[str, Path]]:
-    """Indexa accesos directos y carpetas habituales del usuario una vez."""
+    """Indexa accesos directos de aplicaciones y juegos del menú Inicio y escritorio."""
     global LAUNCH_TARGETS
     if LAUNCH_TARGETS is not None:
         return LAUNCH_TARGETS
@@ -97,10 +105,7 @@ def get_launch_targets() -> list[tuple[str, Path]]:
         appdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
         programdata / "Microsoft" / "Windows" / "Start Menu" / "Programs",
         home / "Desktop",
-        home / "Documents",
-        home / "Downloads",
-        Path(os.environ["OneDrive"]) if os.environ.get("OneDrive") else None,
-        Path(os.environ["OneDriveCommercial"]) if os.environ.get("OneDriveCommercial") else None,
+        Path(os.environ["OneDrive"]) / "Desktop" if os.environ.get("OneDrive") else None,
     }
     targets: list[tuple[str, Path]] = []
 
@@ -113,18 +118,11 @@ def get_launch_targets() -> list[tuple[str, Path]]:
                         targets.append((normalize_text(shortcut.stem), shortcut))
                 continue
 
-            depth_limit = 2 if root.name.lower() != "desktop" else 0
             for entry in root.iterdir():
                 if entry.name.startswith("."):
                     continue
                 if entry.is_file() and entry.suffix.lower() in {".lnk", ".url"}:
                     targets.append((normalize_text(entry.stem), entry))
-                elif entry.is_dir():
-                    targets.append((normalize_text(entry.name), entry))
-                    if depth_limit:
-                        for child in entry.iterdir():
-                            if child.is_dir() and not child.name.startswith("."):
-                                targets.append((normalize_text(child.name), child))
         except OSError:
             continue
 
@@ -139,16 +137,24 @@ def open_requested_target(query: str) -> tuple[str, str]:
 
     normalized_query = normalize_text(query)
     candidates = get_launch_targets()
+    query_tokens = set(normalized_query.split())
+
+    def match_score(name: str) -> float:
+        if normalized_query == name:
+            return 1.0
+        if normalized_query in name or name in normalized_query:
+            return 0.94
+        name_tokens = set(name.split())
+        overlap = len(query_tokens & name_tokens) / max(1, len(query_tokens))
+        character_similarity = difflib.SequenceMatcher(None, normalized_query, name).ratio()
+        return max(overlap * 0.9, character_similarity)
+
     ranked = sorted(
-        (
-            (difflib.SequenceMatcher(None, normalized_query, name).ratio(), name, path)
-            for name, path in candidates
-            if name
-        ),
+        ((match_score(name), name, path) for name, path in candidates if name),
         reverse=True,
     )
     if not ranked or ranked[0][0] < 0.68:
-        return "missing", f"No encuentro un acceso directo o carpeta llamado {query}."
+        return "missing", f"No encuentro una aplicación o juego llamado {query}."
 
     best_score, best_name, best_path = ranked[0]
     if (
@@ -166,8 +172,12 @@ def open_requested_target(query: str) -> tuple[str, str]:
     return "opened", f"Abriendo {best_name}."
 
 
-def capture_text(model: Model, grammar: str | None = None) -> str:
-    """Escucha hasta que Vosk cierre una frase tras una pausa."""
+def capture_text(
+    model: Model,
+    grammar: str | None = None,
+    transcriber: WhisperModel | None = None,
+) -> str:
+    """Graba hasta una pausa; usa Vosk para activar y Whisper para transcribir."""
     if grammar:
         recognizer = KaldiRecognizer(model, SAMPLE_RATE, grammar)
     else:
@@ -175,6 +185,7 @@ def capture_text(model: Model, grammar: str | None = None) -> str:
 
     audio = pyaudio.PyAudio()
     stream = None
+    audio_chunks: list[bytes] = []
     try:
         stream = audio.open(
             format=pyaudio.paInt16,
@@ -186,9 +197,26 @@ def capture_text(model: Model, grammar: str | None = None) -> str:
         stream.start_stream()
         while True:
             audio_chunk = stream.read(4_000, exception_on_overflow=False)
+            if transcriber is not None and grammar is None:
+                audio_chunks.append(audio_chunk)
             if recognizer.AcceptWaveform(audio_chunk):
                 text = json.loads(recognizer.Result()).get("text", "").strip()
-                if text:
+                if transcriber is not None and grammar is None:
+                    pcm = np.frombuffer(b"".join(audio_chunks), dtype=np.int16)
+                    audio_chunks.clear()
+                    if pcm.size:
+                        samples = pcm.astype(np.float32) / 32_768.0
+                        segments, _info = transcriber.transcribe(
+                            samples,
+                            language="es",
+                            task="transcribe",
+                            beam_size=3,
+                            condition_on_previous_text=False,
+                        )
+                        transcript = " ".join(segment.text.strip() for segment in segments).strip()
+                        if transcript:
+                            return transcript
+                elif text:
                     return text
     finally:
         if stream is not None:
@@ -237,15 +265,24 @@ def speak(voice: PiperVoice, text: str) -> None:
         audio.terminate()
 
 
-def converse(model: Model, voice: PiperVoice, local_ai: ollama.Client) -> None:
+def converse(
+    model: Model,
+    voice: PiperVoice,
+    local_ai: ollama.Client,
+    transcriber: WhisperModel,
+) -> None:
     """Mantiene una conversación local hasta escuchar una frase de despedida."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     speak(voice, "Hola, soy Mateo. ¿En qué te puedo ayudar?")
 
     while True:
         print("Te escucho...")
-        user_text = capture_text(model)
+        user_text = capture_text(model, transcriber=transcriber)
         print(f"Tú: {user_text}")
+
+        if not user_text:
+            speak(voice, "No te he entendido bien. ¿Puedes repetirlo, por favor?")
+            continue
 
         if is_farewell(user_text):
             farewell = "De acuerdo. Cuando me necesites, di Oye, Mateo."
@@ -296,15 +333,26 @@ def main() -> None:
     SetLogLevel(-1)
     print("Cargando reconocimiento de voz español...")
     speech_model = Model(str(MODEL_PATH))
+    print("Cargando reconocimiento preciso de español (Whisper)...")
+    transcriber = WhisperModel(
+        WHISPER_MODEL_SIZE,
+        device="cpu",
+        compute_type="int8",
+        cpu_threads=min(8, max(2, os.cpu_count() or 4)),
+        download_root=str(WHISPER_MODEL_PATH),
+    )
     print("Cargando voz local de Mateo...")
     voice = PiperVoice.load(str(PIPER_VOICE_PATH))
     local_ai = ollama.Client(host="http://localhost:11434")
-    print(f"Mateo está listo. Modelo local: {OLLAMA_MODEL}. Pulsa Ctrl+C para salir.")
+    print(
+        f"Mateo está listo. Modelos locales: {OLLAMA_MODEL} y Whisper {WHISPER_MODEL_SIZE}. "
+        "Pulsa Ctrl+C para salir."
+    )
 
     try:
         while True:
             wait_for_wake_word(speech_model)
-            converse(speech_model, voice, local_ai)
+            converse(speech_model, voice, local_ai, transcriber)
     except KeyboardInterrupt:
         print("\nAsistente cerrado.")
 
