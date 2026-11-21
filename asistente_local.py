@@ -2,6 +2,10 @@
 
 import io
 import json
+import os
+import re
+import shutil
+import subprocess
 import unicodedata
 import wave
 from pathlib import Path
@@ -35,6 +39,17 @@ END_PHRASES = (
     "hemos terminado",
     "terminamos",
 )
+OPEN_ACTIONS = ("abre", "abrir", "inicia", "iniciar", "lanza", "ejecuta")
+APP_ALIASES = {
+    "teams": "Teams",
+    "microsoft teams": "Teams",
+    "cursor": "Cursor",
+    "bloc de notas": "Bloc de notas",
+    "notepad": "Bloc de notas",
+    "calculadora": "Calculadora",
+    "navegador": "Navegador",
+    "internet": "Navegador",
+}
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
 Responde de forma natural, cercana y breve, normalmente en una o tres frases.
@@ -60,6 +75,47 @@ def is_farewell(text: str) -> bool:
     """Detecta despedidas habituales sin exigir una frase exacta."""
     normalized = f" {normalize_text(text)} "
     return any(f" {phrase} " in normalized for phrase in END_PHRASES)
+
+
+def requested_application(text: str) -> str | None:
+    """Devuelve una aplicación permitida si la frase pide abrirla."""
+    normalized = normalize_text(text)
+    if not any(re.search(rf"\b{action}\b", normalized) for action in OPEN_ACTIONS):
+        return None
+    for alias in sorted(APP_ALIASES, key=len, reverse=True):
+        if re.search(rf"\b{re.escape(alias)}\b", normalized):
+            return APP_ALIASES[alias]
+    return ""
+
+
+def open_application(application: str) -> bool:
+    """Abre una aplicación de una lista cerrada, sin ejecutar órdenes de voz."""
+    try:
+        if application == "Teams":
+            os.startfile("msteams:")
+        elif application == "Cursor":
+            candidates = [
+                shutil.which("cursor"),
+                str(Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Cursor" / "Cursor.exe"),
+                str(Path(os.environ.get("PROGRAMFILES", "C:\\Program Files")) / "Cursor" / "Cursor.exe"),
+            ]
+            executable = next(
+                (path for path in candidates if path and Path(path).is_file()), None
+            )
+            if not executable:
+                return False
+            subprocess.Popen([executable])
+        elif application == "Bloc de notas":
+            subprocess.Popen(["notepad.exe"])
+        elif application == "Calculadora":
+            subprocess.Popen(["calc.exe"])
+        elif application == "Navegador":
+            os.startfile("https://www.google.com")
+        else:
+            return False
+    except OSError:
+        return False
+    return True
 
 
 def capture_text(model: Model, grammar: str | None = None) -> str:
@@ -148,6 +204,21 @@ def converse(model: Model, voice: PiperVoice, local_ai: ollama.Client) -> None:
             print(f"Mateo: {farewell}")
             speak(voice, farewell)
             return
+
+        app_request = requested_application(user_text)
+        if app_request is not None:
+            if app_request and open_application(app_request):
+                reply = f"Abriendo {app_request}."
+            elif app_request:
+                reply = f"No he encontrado {app_request} en este equipo."
+            else:
+                reply = (
+                    "Puedo abrir Teams, Cursor, el bloc de notas, la calculadora "
+                    "o el navegador. ¿Cuál quieres?"
+                )
+            print(f"Mateo: {reply}")
+            speak(voice, reply)
+            continue
 
         messages.append({"role": "user", "content": user_text})
         try:
