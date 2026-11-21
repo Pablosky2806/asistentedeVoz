@@ -59,9 +59,15 @@ py -3.13 asistente_local.py
 
 Pulsa `Ctrl+C` para salir. La velocidad de respuesta depende del procesador y del modelo local. Ollama y Piper usan los modelos descargados en el portátil.
 
+Para usar la interfaz visual, ejecuta:
+
+```powershell
+py -3.13 interfaz_mateo.py
+```
+
 ## Inicio automático
 
-`iniciar_mateo.vbs` abre la versión local sin mostrar la consola y `detener_mateo.vbs` la cierra. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
+`interfaz_mateo.py` muestra una ventana con el logo animado, el estado de escucha y la conversación. `iniciar_mateo.vbs` abre la interfaz sin consola y `detener_mateo.vbs` cierra la interfaz y el asistente. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1
