@@ -292,10 +292,11 @@ def open_requested_target(
     query: str,
     allow_similar_names: bool = False,
     folder_only: bool = False,
+    location_hint: str = "",
 ) -> tuple[str, str]:
     """Abre el acceso directo de aplicación o juego que coincide con la petición."""
     if not query:
-        return "empty", "Dime el nombre de la aplicación o juego."
+        return "empty", "Dime el nombre de la aplicación, el juego o la carpeta."
 
     explicit_path = Path(os.path.expandvars(query.strip().strip('"'))).expanduser()
     if explicit_path.is_dir() and (
@@ -329,9 +330,32 @@ def open_requested_target(
         matching_folders = [
             (name, path) for name, path in folder_candidates if name in folder_names
         ]
+        if location_hint:
+            hint = re.sub(
+                r"^(?:(?:la carpeta de|la|el|de|del|en) )+",
+                "",
+                normalize_text(location_hint),
+            )
+            location_aliases = {
+                "escritorio": "desktop", "desktop": "escritorio",
+                "documentos": "documents", "documents": "documentos",
+                "descargas": "downloads", "downloads": "descargas",
+            }
+            hints = {hint, location_aliases.get(hint, hint)}
+            location_matches = [
+                item for item in matching_folders
+                if any(term in normalize_text(str(item[1].parent)) for term in hints)
+            ]
+            if location_matches:
+                matching_folders = location_matches
         if len(matching_folders) > 1:
-            options = " o ".join(str(path) for _name, path in matching_folders[:3])
-            return "ambiguous", f"Hay varias carpetas con ese nombre: {options}. ¿Cuál quieres?"
+            locations = []
+            for _name, path in matching_folders:
+                location = path.parent.name or str(path.parent)
+                if location not in locations:
+                    locations.append(location)
+            options = " o ".join(locations[:3])
+            return "folder_ambiguous", f"Hay varias carpetas llamadas {query}. ¿La de {options}? Dime la ubicación."
         if exact_folder:
             folder_name, folder_path = exact_folder
         else:
@@ -342,12 +366,14 @@ def open_requested_target(
                 ),
                 reverse=True,
             )
-            if not ranked_folders or ranked_folders[0][0] < 0.86:
+            if not ranked_folders or ranked_folders[0][0] < 0.72:
                 return "missing", f"No encuentro una carpeta llamada {query} en tus ubicaciones habituales."
             if len(ranked_folders) > 1 and ranked_folders[0][0] - ranked_folders[1][0] < 0.08:
-                options = " o ".join(str(item[2]) for item in ranked_folders[:2])
-                return "ambiguous", f"He encontrado varias carpetas parecidas: {options}. ¿Cuál quieres?"
+                options = " o ".join(item[1] for item in ranked_folders[:2])
+                return "folder_ambiguous", f"He encontrado varias carpetas parecidas: {options}. Dime el nombre exacto."
             _score, folder_name, folder_path = ranked_folders[0]
+            if _score < 0.90 and not allow_similar_names:
+                return "confirm", f"He entendido que buscas la carpeta {folder_name}. ¿Es correcto?"
         try:
             launch_target(folder_path)
         except OSError:
@@ -391,7 +417,7 @@ def open_requested_target(
         ((match_score(name), name, path) for name, path in candidates if name),
         reverse=True,
     )
-    if not ranked or ranked[0][0] < 0.82:
+    if not ranked or ranked[0][0] < 0.72:
         executable = shutil.which(query) or shutil.which(f"{query}.exe")
         if executable:
             try:
@@ -405,6 +431,12 @@ def open_requested_target(
             ((name, path) for name, path in folder_candidates if name == normalized_query),
             None,
         )
+        matching_folders = [
+            (name, path) for name, path in folder_candidates if name == normalized_query
+        ]
+        if len(matching_folders) > 1:
+            locations = " o ".join(path.parent.name for _name, path in matching_folders[:3])
+            return "folder_ambiguous", f"Hay varias carpetas llamadas {query}, en {locations}. Dime la ubicación."
         if exact_folder:
             folder_name, folder_path = exact_folder
             try:
@@ -421,11 +453,13 @@ def open_requested_target(
                 ),
                 reverse=True,
             )
-            if ranked_folders and ranked_folders[0][0] >= 0.90:
+            if ranked_folders and ranked_folders[0][0] >= 0.72:
                 if len(ranked_folders) > 1 and ranked_folders[0][0] - ranked_folders[1][0] < 0.08:
-                    options = " o ".join(str(item[2]) for item in ranked_folders[:2])
-                    return "ambiguous", f"He encontrado varias carpetas parecidas: {options}. ¿Cuál quieres?"
+                    options = " o ".join(item[1] for item in ranked_folders[:2])
+                    return "folder_ambiguous", f"He encontrado varias carpetas parecidas: {options}. Dime el nombre exacto."
                 _score, folder_name, folder_path = ranked_folders[0]
+                if _score < 0.90 and not allow_similar_names:
+                    return "confirm", f"He entendido que buscas la carpeta {folder_name}. ¿Es correcto?"
                 try:
                     launch_target(folder_path)
                 except OSError:
@@ -450,7 +484,10 @@ def open_requested_target(
         and best_score - ranked[1][0] < 0.08
     ):
         options = " o ".join(item[1] for item in ranked[:2])
-        return "ambiguous", f"He encontrado varias coincidencias: {options}. ¿Cuál quieres?"
+        return "ambiguous", f"He encontrado varias aplicaciones parecidas: {options}. Dime el nombre exacto."
+
+    if best_score < 0.90 and not allow_similar_names:
+        return "confirm", f"He entendido que quieres abrir {best_name}. ¿Es correcto?"
 
     try:
         launch_target(best_path)
@@ -654,19 +691,45 @@ def converse(
         if app_request is not None:
             command_words = set(normalize_text(user_text).split())
             folder_only = bool(command_words & {"carpeta", "directorio"})
+            print(f"Orden detectada: abrir {app_request}", flush=True)
             result, reply = open_requested_target(app_request, folder_only=folder_only)
             print(f"Mateo: {reply}")
             speak(voice, reply)
-            if result == "clarify":
+            if result in {"clarify", "ambiguous", "folder_ambiguous", "confirm"}:
                 choice_text = capture_text(model, transcriber=transcriber)
                 print(f"Tú: {choice_text}")
                 choice = normalize_text(choice_text)
-                if "microsoft" in choice or "teams" in choice or "tims" in choice:
+                affirmative = choice in {
+                    "si", "si por favor", "correcto", "eso es", "exacto", "vale", "adelante"
+                } or choice.startswith(("si ", "vale ", "correcto ", "adelante "))
+                negative = choice in {"no", "no gracias", "cancelar", "dejalo", "olvidalo"} or choice.startswith("no ")
+                if result == "confirm" and affirmative:
+                    result, reply = open_requested_target(
+                        app_request,
+                        allow_similar_names=True,
+                        folder_only=folder_only,
+                    )
+                elif result == "confirm" and negative:
+                    reply = "De acuerdo, no abriré nada."
+                elif result == "folder_ambiguous":
+                    result, reply = open_requested_target(
+                        app_request,
+                        allow_similar_names=True,
+                        folder_only=True,
+                        location_hint=choice_text,
+                    )
+                elif "microsoft" in choice or "teams" in choice or "tims" in choice:
                     result, reply = open_requested_target("teams", allow_similar_names=True)
                 elif "steam" in choice:
                     result, reply = open_requested_target("steam", allow_similar_names=True)
+                elif choice and not negative:
+                    result, reply = open_requested_target(
+                        choice_text,
+                        allow_similar_names=True,
+                        folder_only=folder_only,
+                    )
                 else:
-                    reply = "De acuerdo, no abriré ninguna aplicación."
+                    reply = "De acuerdo, no abriré nada."
                 print(f"Mateo: {reply}")
                 speak(voice, reply)
             continue

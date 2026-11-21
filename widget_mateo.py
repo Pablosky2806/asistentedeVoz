@@ -171,6 +171,8 @@ class MateoWidget:
         elif line.startswith("No encuentro el modelo local") or line.startswith("No consigo conectar con Ollama"):
             self._add_transcript("Mateo", line)
             self._set_state("Error", "Revisa Ollama y su modelo")
+        elif line.startswith("Orden detectada:"):
+            self._add_transcript("Acción", line.partition(":")[2].strip())
         elif line.startswith("Esperando"):
             self._set_state("En espera", 'Di «Oye, Mateo»')
         elif line.startswith("Activación detectada"):
