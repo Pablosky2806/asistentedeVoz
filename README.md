@@ -23,69 +23,45 @@ Mateo solo guarda datos cuando se lo pides explícitamente con «recuerda que…
 
 También puedes revisar o borrar el archivo local `datos/memoria_mateo.json` manualmente.
 
-Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
+Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual. La memoria persistente opcional se guarda localmente y puedes controlarla desde el widget.
 
-## Preparación en Windows
+## Instalación sencilla en Windows
 
-Se recomienda Python 3.13 para usar PyAudio en Windows.
+Requisitos: Windows, Python 3.13 y [Ollama para Windows](https://ollama.com/download/windows). Descarga el repositorio y abre PowerShell dentro de su carpeta. Ejecuta una vez:
 
-1. Crea y activa un entorno virtual:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\configurar_mateo.ps1
+```
 
-   ```powershell
-   py -3.13 -m venv .venv
-   .venv\Scripts\Activate.ps1
-   ```
+El instalador crea un entorno Python aislado en `.venv`, instala las dependencias y descarga los modelos de Vosk, Piper y Whisper que falten. Comprueba Ollama y configura el inicio automático de Mateo. Si falta `qwen3:8b`, te pregunta antes de iniciar una descarga de aproximadamente 5,2 GB. Si respondes que no, puedes descargarlo después con `ollama pull qwen3:8b` y volver a ejecutar el instalador.
 
-2. Instala las dependencias:
-
-   ```powershell
-   python -m pip install -r requirements.txt
-   ```
-
-3. Descarga el modelo pequeño de español de [Vosk](https://alphacephei.com/vosk/models) (`vosk-model-small-es-0.42`, unos 39 MB). Extrae la carpeta en `modelos`, para que exista `modelos/vosk-model-small-es-0.42/conf`.
-
-4. Instala [Ollama para Windows](https://ollama.com/download/windows). Luego abre PowerShell y descarga el modelo local de 8B:
-
-   ```powershell
-   ollama run qwen3:8b
-   ```
-
-   La descarga ocupa unos 5,2 GB. Cuando aparezca el indicador de conversación de Ollama, escribe `/bye` para salir. El modelo permanece en el equipo y Ollama atiende las solicitudes locales.
-
-5. Descarga la nueva voz española de Piper dentro de `modelos/piper`:
-
-   ```powershell
-   New-Item -ItemType Directory -Force modelos\piper
-   py -3.13 -m piper.download_voices es_ES-sharvard-medium --data-dir modelos\piper
-   ```
-
-La carpeta `modelos/` está excluida de Git para no subir archivos grandes. En el primer arranque, faster-whisper descarga una vez su modelo de reconocimiento; después la transcripción funciona localmente.
+La primera instalación puede tardar: Whisper ocupa alrededor de 500 MB y el modelo de Ollama varios GB. Los archivos se quedan en este equipo; `modelos/`, `.venv/` y `datos/` están excluidos de Git.
 
 ## Ejecutar Mateo sin créditos de API
 
 Desde la carpeta del proyecto:
 
 ```powershell
-py -3.13 asistente_local.py
+.venv\Scripts\python.exe asistente_local.py
 ```
 
 Pulsa `Ctrl+C` para salir. La velocidad de respuesta depende del procesador y del modelo local. Ollama y Piper usan los modelos descargados en el portátil.
 
-Para abrir el widget flotante de Mateo, ejecuta:
+Para abrir el widget flotante de Mateo, ejecuta el acceso directo de Inicio o, desde la carpeta del proyecto:
 
 ```powershell
-py -3.13 widget_mateo.py
+wscript.exe .\iniciar_mateo.vbs
 ```
 
 ## Inicio automático
 
-`widget_mateo.py` muestra una cápsula flotante arriba de la pantalla con el icono y estado de Mateo. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
+`widget_mateo.py` muestra una cápsula flotante arriba de la pantalla con el icono y estado de Mateo. Al desplegarla se ve la actividad reciente, puedes pausar o reanudar el micrófono, activar o desactivar la memoria, abrir su archivo local o borrarla con confirmación. `iniciar_mateo.vbs` abre el widget sin consola y `detener_mateo.vbs` cierra el widget y el asistente. El instalador configura el inicio automático al iniciar sesión en Windows; para configurarlo manualmente puedes ejecutar:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1
 ```
 
-Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Al iniciar, Mateo comprueba que Ollama responde, busca `qwen3:8b` y lo prepara antes de empezar a escuchar. Si el modelo no está descargado, Mateo te lo indicará y podrás instalarlo con `ollama pull qwen3:8b`. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows.
+Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Al iniciar, Mateo comprueba que Ollama responde y prepara `qwen3:8b` antes de empezar a escuchar. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows. El widget usa el entorno `.venv` del proyecto; si no está, intenta usar Python 3.13 instalado en el perfil de Windows.
 
 ## Seguimiento del proyecto
 
