@@ -7,7 +7,7 @@ Proyecto en Python con dos motores de conversación:
 
 ## Cómo funciona la versión local
 
-Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Di **«Adiós, Mateo»** o **«Terminar conversación»** para volver a esperar la frase de activación.
+Vosk escucha el micrófono en el equipo y espera **«Oye, Mateo»** o **«Illo, Mateo»**. Después, transcribe cada turno localmente, Ollama genera la respuesta en el portátil y Piper la convierte en voz. Puedes despedirte con frases naturales como **«adiós»**, **«hasta luego»**, **«me voy»**, **«ya no te necesito»**, **«eso es todo»** o **«deja de escuchar»**. Mateo responderá y volverá a esperar la frase de activación.
 
 Los modelos se descargan una vez y quedan guardados localmente. La conversación no envía audio ni mensajes a ElevenLabs. El contexto se conserva durante la conversación actual; la memoria persistente se añadirá en otra fase.
 
@@ -59,7 +59,13 @@ Pulsa `Ctrl+C` para salir. La velocidad de respuesta depende del procesador y de
 
 ## Inicio automático
 
-`iniciar_mateo.vbs` y `detener_mateo.vbs` se configurarán para la versión local después de completar y probar su instalación. Para usar la versión local mientras tanto, ejecútala con el comando anterior.
+`iniciar_mateo.vbs` abre la versión local sin mostrar la consola y `detener_mateo.vbs` la cierra. Para que Mateo se inicie automáticamente al iniciar sesión en Windows, ejecuta una vez `instalar_inicio_automatico.ps1` desde PowerShell en la carpeta del proyecto:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\instalar_inicio_automatico.ps1
+```
+
+Windows no permite que Mateo escuche antes de iniciar sesión; se abrirá después de entrar en tu cuenta. Para desactivar el inicio automático, elimina el acceso directo `Mateo.lnk` de la carpeta Inicio de Windows. Ollama debe estar instalado y ejecutándose para generar respuestas.
 
 ## Seguimiento del proyecto
 

@@ -18,7 +18,23 @@ PIPER_VOICE_PATH = Path(__file__).parent / "modelos" / "piper" / "es_ES-davefx-m
 OLLAMA_MODEL = "qwen3:8b"
 WAKE_PHRASES = ("oye mateo", "illo mateo", "y yo mateo")
 WAKE_GRAMMAR = json.dumps([*WAKE_PHRASES, "[unk]"], ensure_ascii=False)
-END_PHRASES = ("adios mateo", "terminar conversacion", "cerrar conversacion")
+END_PHRASES = (
+    "adios",
+    "hasta luego",
+    "hasta pronto",
+    "me voy",
+    "eso es todo",
+    "no necesito nada mas",
+    "ya no te necesito",
+    "puedes descansar",
+    "deja de escuchar",
+    "para de escuchar",
+    "terminar conversacion",
+    "cerrar conversacion",
+    "quiero terminar",
+    "hemos terminado",
+    "terminamos",
+)
 
 SYSTEM_PROMPT = """Eres Mateo, un asistente personal conversacional en español.
 Responde de forma natural, cercana y breve, normalmente en una o tres frases.
@@ -38,6 +54,12 @@ def normalize_text(text: str) -> str:
         character if character.isalnum() else " " for character in without_accents
     )
     return " ".join(cleaned.split())
+
+
+def is_farewell(text: str) -> bool:
+    """Detecta despedidas habituales sin exigir una frase exacta."""
+    normalized = f" {normalize_text(text)} "
+    return any(f" {phrase} " in normalized for phrase in END_PHRASES)
 
 
 def capture_text(model: Model, grammar: str | None = None) -> str:
@@ -121,7 +143,7 @@ def converse(model: Model, voice: PiperVoice, local_ai: ollama.Client) -> None:
         user_text = capture_text(model)
         print(f"Tú: {user_text}")
 
-        if any(phrase in normalize_text(user_text) for phrase in END_PHRASES):
+        if is_farewell(user_text):
             farewell = "De acuerdo. Cuando me necesites, di Oye, Mateo."
             print(f"Mateo: {farewell}")
             speak(voice, farewell)
